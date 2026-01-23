@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Animation for the "Heartbeat" of the sensor */
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  100% { transform: scale(2); opacity: 0; }
+}
+.sensor-active::before {
+  content: '';
+  position: absolute;
+  width: 100%; height: 100%;
+  background: rgba(34, 197, 94, 0.4);
+  border-radius: 50%;
+  z-index: -1;
+  animation: pulse-ring 2s infinite;
+}
