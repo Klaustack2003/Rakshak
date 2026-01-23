@@ -6,7 +6,7 @@ import { AlertTriangle, Shield, Navigation, Phone, Lock, History } from 'lucide-
 
 // --- CONFIGURATION ---
 const API_URL = `https://rakshak-api-sovy.onrender.com`;
-const G_FORCE_THRESHOLD = 15; 
+const G_FORCE_THRESHOLD = 25; 
 
 // --- HELPER COMPONENT: MOVES MAP TO NEW LOCATION ---
 function MapUpdater({ center }) {
