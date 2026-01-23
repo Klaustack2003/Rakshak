@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { AlertTriangle, Shield, Navigation, Phone, Lock, History } from 'lucide-react';
 
 // --- CONFIGURATION ---
-const API_URL = `http://${window.location.hostname}:8000`;
+const API_URL = `https://rakshak-api-sovy.onrender.com`;
 const G_FORCE_THRESHOLD = 15; 
 
 // --- HELPER COMPONENT: MOVES MAP TO NEW LOCATION ---
