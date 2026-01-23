@@ -1,52 +1,68 @@
+import os
 import sqlite3
+import psycopg2
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware  # <--- NEW IMPORT
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
 
 app = FastAPI()
 
-# --- SECURITY UPGRADE: CORS ---
-# This tells the server: "Allow the React app to talk to me"
-origins = [
-    "http://localhost:5173",    # React Localhost
-    "http://127.0.0.1:5173",    # React Localhost alternate
-    "*"                         # Allow Mobile Phones on local network
-]
-
+# --- SECURITY: CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"], # Allows all frontend connections
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- DATABASE ---
+# --- SMART DATABASE CONNECTION ---
+# Check if we are in the cloud (DATABASE_URL exists) or local (It doesn't)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+def get_db_connection():
+    if DATABASE_URL:
+        # Cloud: Connect to PostgreSQL
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    else:
+        # Local: Connect to SQLite
+        conn = sqlite3.connect('rakshak.db')
+    return conn
+
 def init_db():
-    conn = sqlite3.connect('rakshak.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS accident_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            location TEXT,
-            message TEXT,
-            timestamp TEXT
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            name TEXT,
-            phone TEXT,
-            relation TEXT
-        )
-    ''')
+    
+    # PostgreSQL uses 'SERIAL' for auto-increment, SQLite uses 'AUTOINCREMENT'
+    # We use a generic SQL approach compliant with both for simple tables
+    if DATABASE_URL:
+        # PostgreSQL Syntax
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS accident_logs (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                location TEXT,
+                message TEXT,
+                timestamp TEXT
+            )
+        ''')
+    else:
+        # SQLite Syntax
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS accident_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                location TEXT,
+                message TEXT,
+                timestamp TEXT
+            )
+        ''')
+    
     conn.commit()
     conn.close()
 
+# Initialize DB on startup
 init_db()
 
 # --- MODELS ---
@@ -55,48 +71,48 @@ class CrashReport(BaseModel):
     location: str
     message: str
 
-class Contact(BaseModel):
-    user_id: int
-    name: str
-    phone: str
-    relation: str
-
 # --- API ENDPOINTS ---
-
 @app.get("/")
 def home():
-    return {"status": "Rakshak API Online", "version": "2.0"}
+    return {"status": "Rakshak API Online", "db_type": "PostgreSQL" if DATABASE_URL else "SQLite"}
 
 @app.post("/crash_alert")
 def receive_crash(report: CrashReport):
-    conn = sqlite3.connect('rakshak.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Log with readable timestamp
     time_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute(
-        "INSERT INTO accident_logs (user_id, location, message, timestamp) VALUES (?, ?, ?, ?)",
-        (report.user_id, report.location, report.message, time_now)
-    )
     
-    # 2. Check contacts
-    cursor.execute("SELECT * FROM contacts WHERE user_id = ?", (report.user_id,))
-    contacts = cursor.fetchall()
+    # SQL query syntax differs slightly (Placeholder: %s for Postgres, ? for SQLite)
+    query = "INSERT INTO accident_logs (user_id, location, message, timestamp) VALUES (%s, %s, %s, %s)" if DATABASE_URL else \
+            "INSERT INTO accident_logs (user_id, location, message, timestamp) VALUES (?, ?, ?, ?)"
+    
+    cursor.execute(query, (report.user_id, report.location, report.message, time_now))
+    
     conn.commit()
     conn.close()
     
-    return {
-        "status": "CRITICAL_ALERT_RECEIVED",
-        "timestamp": time_now,
-        "notified_contacts": [c[2] for c in contacts] # Returns names only
-    }
+    return {"status": "ALERT_SAVED", "timestamp": time_now}
 
 @app.get("/view_history")
 def view_history():
-    conn = sqlite3.connect('rakshak.db')
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # Fetch logs
     cursor.execute("SELECT * FROM accident_logs ORDER BY id DESC")
     rows = cursor.fetchall()
+    
+    # Format results as JSON
+    results = []
+    for row in rows:
+        results.append({
+            "id": row[0],
+            "user_id": row[1],
+            "location": row[2],
+            "message": row[3],
+            "timestamp": row[4]
+        })
+        
     conn.close()
-    return rows  # React prefers direct arrays, not nested objects
+    return results
