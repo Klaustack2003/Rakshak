@@ -7,7 +7,7 @@
 ---
 
 ## 🚀 Live Demo
-- **Frontend (Mobile App):** [[https://rakshak-sigma.vercel.app] 
+- **Frontend (Mobile App):** [https://rakshak-sigma.vercel.app] 
 - **Backend API (Docs):** [https://rakshak-api-sovy.onrender.com] 
 
 ---
