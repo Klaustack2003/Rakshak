@@ -4,9 +4,12 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { AlertTriangle, Shield, Navigation, Database, BarChart3, MapPin } from 'lucide-react';
 
+// --- CONFIGURATION ---
 const API_URL = "https://rakshak-api-sovy.onrender.com";
 const IMPACT_THRESHOLD = 20; 
-const ALARM_URL = "https://cdn.freesound.org/previews/253/253888_3889600-lq.mp3";
+
+// NEW RELIABLE SIREN URL (Faster loading)
+const ALARM_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
 function MapUpdater({ center }) {
   const map = useMap();
@@ -73,13 +76,14 @@ function App() {
   const [acceleration, setAcceleration] = useState(0);
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
-  
-  // FIX: Use useRef for Audio (Mutable object), not useState
-  const audioRef = useRef(new Audio(ALARM_URL));
-  
   const [debugInfo, setDebugInfo] = useState({ x:0, y:0, z:0, status: "Waiting" });
 
+  // AUDIO REF
+  const audioRef = useRef(new Audio(ALARM_URL));
+
   useEffect(() => {
+    // Preload audio
+    audioRef.current.load();
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition((pos) => {
         setLocation([pos.coords.latitude, pos.coords.longitude]);
@@ -87,24 +91,38 @@ function App() {
     }
   }, []);
 
+  // --- THE AUDIO UNLOCKER FIX ---
   const handleLogin = () => {
-    // Prime the audio on user interaction
+    // 1. Mute it so user doesn't hear a chirp
+    audioRef.current.volume = 0;
+    
+    // 2. Play it to unlock the browser's "Media Engagement" policy
     audioRef.current.play().then(() => {
-        audioRef.current.pause(); 
-        audioRef.current.currentTime = 0;
-    }).catch(e => console.log("Audio permission pending...", e));
+        // 3. Immediately pause and reset
+        setTimeout(() => {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            // 4. UNMUTE it for later use (Crucial!)
+            audioRef.current.volume = 1.0; 
+        }, 100);
+    }).catch(e => console.log("Audio unlock failed:", e));
+    
     setIsLoggedIn(true);
   };
 
-  // FIX: Wrap in useCallback to satisfy linter
   const playAlarm = useCallback(() => {
     audioRef.current.currentTime = 0;
-    audioRef.current.play().catch(() => alert("Please tap screen to enable audio!"));
+    // Force volume just in case
+    audioRef.current.volume = 1.0;
+    audioRef.current.play().catch((e) => {
+        console.error("Playback failed:", e);
+        alert("TAP SCREEN NOW to hear alarm!");
+    });
   }, []);
 
   const handleSOS = useCallback(async (msg = "Manual SOS") => {
     setSosStatus('sending');
-    playAlarm(); 
+    playAlarm(); // Trigger Sound
 
     const send = async (loc) => {
         try {
@@ -124,7 +142,7 @@ function App() {
           () => send("GPS Unavailable")
       );
     } else { send("GPS Not Supported"); }
-  }, [playAlarm]); // Added dependency
+  }, [playAlarm]);
 
   const toggleSentryMode = () => {
     if (!autoMode) {
