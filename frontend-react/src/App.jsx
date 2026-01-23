@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -6,6 +6,7 @@ import { AlertTriangle, Shield, Navigation, Database, BarChart3, MapPin } from '
 
 const API_URL = "https://rakshak-api-sovy.onrender.com";
 const IMPACT_THRESHOLD = 20; 
+const ALARM_URL = "https://cdn.freesound.org/previews/253/253888_3889600-lq.mp3";
 
 function MapUpdater({ center }) {
   const map = useMap();
@@ -73,8 +74,10 @@ function App() {
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
   
-  // Debug State
-  const [debugInfo, setDebugInfo] = useState({ x:0, y:0, z:0, source: "None" });
+  // FIX: Use useRef for Audio (Mutable object), not useState
+  const audioRef = useRef(new Audio(ALARM_URL));
+  
+  const [debugInfo, setDebugInfo] = useState({ x:0, y:0, z:0, status: "Waiting" });
 
   useEffect(() => {
     if ("geolocation" in navigator) {
@@ -84,8 +87,25 @@ function App() {
     }
   }, []);
 
+  const handleLogin = () => {
+    // Prime the audio on user interaction
+    audioRef.current.play().then(() => {
+        audioRef.current.pause(); 
+        audioRef.current.currentTime = 0;
+    }).catch(e => console.log("Audio permission pending...", e));
+    setIsLoggedIn(true);
+  };
+
+  // FIX: Wrap in useCallback to satisfy linter
+  const playAlarm = useCallback(() => {
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(() => alert("Please tap screen to enable audio!"));
+  }, []);
+
   const handleSOS = useCallback(async (msg = "Manual SOS") => {
     setSosStatus('sending');
+    playAlarm(); 
+
     const send = async (loc) => {
         try {
             await axios.post(`${API_URL}/crash_alert`, { user_id: 101, location: loc, message: msg });
@@ -104,11 +124,10 @@ function App() {
           () => send("GPS Unavailable")
       );
     } else { send("GPS Not Supported"); }
-  }, []);
+  }, [playAlarm]); // Added dependency
 
   const toggleSentryMode = () => {
     if (!autoMode) {
-      // iOS Permission Request
       if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
           .then(response => {
@@ -117,7 +136,6 @@ function App() {
           })
           .catch(console.error);
       } else {
-        // Android directly enables
         setAutoMode(true);
       }
     } else {
@@ -128,30 +146,26 @@ function App() {
   useEffect(() => {
     if (autoMode) {
       const handleMotion = (event) => {
-        // UNIVERSAL SENSOR PATCH: Try all possible data sources
-        // 1. Try Gravity (Standard)
         let x = event.accelerationIncludingGravity?.x;
         let y = event.accelerationIncludingGravity?.y;
         let z = event.accelerationIncludingGravity?.z;
         let src = "Gravity";
 
-        // 2. If null, try pure Acceleration (Some Androids)
-        if (!x && !y && !z) {
+        if (x === null || x === undefined) {
             x = event.acceleration?.x;
             y = event.acceleration?.y;
             z = event.acceleration?.z;
             src = "Accel";
         }
 
-        // 3. Fallback to 0
-        x = x || 0;
-        y = y || 0;
-        z = z || 0;
+        if (x === null || x === undefined) {
+            setDebugInfo({ x:0, y:0, z:0, status: "BLOCKED/NULL" });
+            return;
+        }
 
-        setDebugInfo({ x: x.toFixed(1), y: y.toFixed(1), z: z.toFixed(1), source: src });
+        setDebugInfo({ x: x.toFixed(1), y: y.toFixed(1), z: z.toFixed(1), status: src });
 
         const totalForce = Math.sqrt(x*x + y*y + z*z);
-        // Physics: If source is Gravity, subtract 9.8. If pure Accel, use raw.
         const impactForce = src === "Gravity" ? Math.abs(totalForce - 9.8) : totalForce;
         
         setAcceleration(impactForce.toFixed(1));
@@ -176,7 +190,7 @@ function App() {
           </div>
           <h1 className="text-4xl font-black text-white text-center mb-2 tracking-tighter">RAKSHAK <span className="text-red-500">2.0</span></h1>
           <p className="text-slate-500 text-center mb-8 text-sm font-medium tracking-wide">AI-POWERED ACCIDENT RESPONSE</p>
-          <button onClick={() => setIsLoggedIn(true)} className="w-full bg-gradient-to-r from-red-600 to-red-500 text-white py-4 rounded-xl font-bold tracking-wide">INITIATE SYSTEM</button>
+          <button onClick={handleLogin} className="w-full bg-gradient-to-r from-red-600 to-red-500 text-white py-4 rounded-xl font-bold tracking-wide">INITIATE SYSTEM</button>
         </div>
       </div>
     );
@@ -208,8 +222,8 @@ function App() {
               </div>
               <div className="mt-3 text-xs font-mono text-slate-500 space-y-1">
                 <div className="flex justify-between"><span>IMPACT: {acceleration} G</span><span>LIMIT: {IMPACT_THRESHOLD} G</span></div>
-                <div className="text-[10px] text-slate-700 text-center">
-                  DEBUG: {debugInfo.source} | X:{debugInfo.x} Y:{debugInfo.y} Z:{debugInfo.z}
+                <div className={`text-[10px] text-center font-bold p-1 rounded ${debugInfo.status.includes("BLOCKED") ? 'bg-red-500/20 text-red-400' : 'text-slate-600'}`}>
+                  STATUS: {debugInfo.status} <br/> X:{debugInfo.x} Y:{debugInfo.y} Z:{debugInfo.z}
                 </div>
               </div>
             </div>
