@@ -5,32 +5,23 @@ import 'leaflet/dist/leaflet.css';
 import { AlertTriangle, Shield, Navigation, Database, BarChart3, MapPin } from 'lucide-react';
 
 // --- CONFIGURATION ---
-// Replace with your actual Render URL
-const API_URL = "https://rakshak-api-sovy.onrender.com"; 
+const API_URL = "https://rakshak-api-sovy.onrender.com";
 const IMPACT_THRESHOLD = 20; 
 
-// --- HELPER COMPONENTS ---
 function MapUpdater({ center }) {
   const map = useMap();
   map.setView(center, 15);
   return null;
 }
 
-// --- ADMIN DASHBOARD ---
 function AdminDashboard() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     axios.get(`${API_URL}/view_history`)
-      .then(res => {
-        setHistory(res.data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setLoading(false);
-      });
+      .then(res => { setHistory(res.data); setLoading(false); })
+      .catch(err => { console.error(err); setLoading(false); });
   }, []);
 
   return (
@@ -43,11 +34,7 @@ function AdminDashboard() {
         <div className="flex items-end justify-between h-32 gap-2">
           {history.slice(0, 7).map((log, i) => (
              <div key={i} className="w-full bg-slate-800 rounded-t-lg relative group">
-                <div 
-                  className="absolute bottom-0 w-full bg-blue-600/80 rounded-t-lg transition-all hover:bg-blue-500" 
-                  // Deterministic height calculation instead of random
-                  style={{ height: `${Math.min(100, 20 + (log.id % 10) * 8)}%` }}
-                ></div>
+                <div className="absolute bottom-0 w-full bg-blue-600/80 rounded-t-lg transition-all hover:bg-blue-500" style={{ height: `${Math.min(100, 20 + (log.id % 10) * 8)}%` }}></div>
              </div>
           ))}
           {history.length === 0 && <div className="text-slate-600 text-xs w-full text-center">No Data Yet</div>}
@@ -80,17 +67,17 @@ function AdminDashboard() {
   );
 }
 
-// --- MAIN APP ---
 function App() {
-  // 1. ALL STATE HOOKS
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const [sosStatus, setSosStatus] = useState('idle');
   const [acceleration, setAcceleration] = useState(0);
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
+  
+  // Debug State: Shows raw X/Y/Z to prove sensor is working
+  const [debugInfo, setDebugInfo] = useState({ x:0, y:0, z:0 });
 
-  // 2. INITIAL GPS SETUP
   useEffect(() => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition((pos) => {
@@ -99,7 +86,6 @@ function App() {
     }
   }, []);
 
-  // 3. SOS HANDLER (useCallback prevents re-creation loops)
   const handleSOS = useCallback(async (msg = "Manual SOS") => {
     setSosStatus('sending');
     const send = async (loc) => {
@@ -107,10 +93,7 @@ function App() {
             await axios.post(`${API_URL}/crash_alert`, { user_id: 101, location: loc, message: msg });
             setSosStatus('success');
             setTimeout(() => setSosStatus('idle'), 5000);
-        } catch { 
-            setSosStatus('idle'); 
-            alert("Failed to send alert"); 
-        }
+        } catch { setSosStatus('idle'); alert("Failed to send alert"); }
     };
 
     if ("geolocation" in navigator) {
@@ -122,39 +105,62 @@ function App() {
           },
           () => send("GPS Unavailable")
       );
-    } else {
-      send("GPS Not Supported");
-    }
+    } else { send("GPS Not Supported"); }
   }, []);
 
-  // 4. SENSOR LOGIC
+  // --- FIXED SENSOR TOGGLE ---
+  // We handle permissions HERE (on Click), not in useEffect
+  const toggleSentryMode = () => {
+    if (!autoMode) {
+      // 1. Try to ask for permission (iOS 13+)
+      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission()
+          .then(response => {
+            if (response === 'granted') {
+              setAutoMode(true);
+            } else {
+              alert("Permission Denied! You must allow sensors for Rakshak to work.");
+            }
+          })
+          .catch(console.error);
+      } else {
+        // 2. Android/Standard doesn't need asking
+        setAutoMode(true);
+      }
+    } else {
+      setAutoMode(false);
+    }
+  };
+
   useEffect(() => {
     if (autoMode) {
       const handleMotion = (event) => {
+        // Fallback to 0 if sensor is blocked
         const { x, y, z } = event.accelerationIncludingGravity || { x:0, y:0, z:0 };
-        const totalForce = Math.sqrt(x*x + y*y + z*z);
-        // Physics fix: 0.0 at rest
-        const impactForce = Math.abs(totalForce - 9.8);
         
+        // Update Debug Info
+        setDebugInfo({ x: x?.toFixed(1), y: y?.toFixed(1), z: z?.toFixed(1) });
+
+        const totalForce = Math.sqrt(
+          (x || 0) * (x || 0) + 
+          (y || 0) * (y || 0) + 
+          (z || 0) * (z || 0)
+        );
+
+        // Physics: Impact = |Total - 9.8|
+        const impactForce = Math.abs(totalForce - 9.8);
         setAcceleration(impactForce.toFixed(1));
 
         if (impactForce > IMPACT_THRESHOLD && sosStatus === 'idle') {
-          handleSOS("🚨 Automated Crash Detected (High Impact)");
+          handleSOS("🚨 Automated Crash Detected");
         }
       };
-      
-      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-        DeviceMotionEvent.requestPermission().then(response => {
-          if (response === 'granted') window.addEventListener('devicemotion', handleMotion);
-        });
-      } else {
-        window.addEventListener('devicemotion', handleMotion);
-      }
+
+      window.addEventListener('devicemotion', handleMotion);
       return () => window.removeEventListener('devicemotion', handleMotion);
     }
   }, [autoMode, sosStatus, handleSOS]);
 
-  // 5. CONDITIONAL RENDER (Only valid AFTER all hooks)
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans">
@@ -165,9 +171,7 @@ function App() {
           </div>
           <h1 className="text-4xl font-black text-white text-center mb-2 tracking-tighter">RAKSHAK <span className="text-red-500">2.0</span></h1>
           <p className="text-slate-500 text-center mb-8 text-sm font-medium tracking-wide">AI-POWERED ACCIDENT RESPONSE</p>
-          <button onClick={() => setIsLoggedIn(true)} className="w-full bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white py-4 rounded-xl font-bold shadow-lg shadow-red-900/30 transition-all active:scale-95 tracking-wide">
-             INITIATE SYSTEM
-          </button>
+          <button onClick={() => setIsLoggedIn(true)} className="w-full bg-gradient-to-r from-red-600 to-red-500 text-white py-4 rounded-xl font-bold tracking-wide">INITIATE SYSTEM</button>
         </div>
       </div>
     );
@@ -186,20 +190,22 @@ function App() {
             <div className={`bg-slate-900 p-6 rounded-2xl border transition-all duration-300 ${autoMode ? 'border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.1)]' : 'border-slate-800'}`}>
               <div className="flex justify-between items-center mb-6">
                 <div><h3 className="text-slate-400 text-[10px] font-black tracking-widest uppercase">IMPACT SENSOR</h3><div className={`text-xl font-bold mt-1 ${autoMode ? 'text-green-400' : 'text-slate-500'}`}>{autoMode ? "ACTIVE" : "OFFLINE"}</div></div>
-                <button onClick={() => setAutoMode(!autoMode)} className={`w-12 h-6 rounded-full transition-colors relative ${autoMode ? 'bg-green-500' : 'bg-slate-700'}`}>
+                {/* BUTTON TRIGGERS PERMISSION NOW */}
+                <button onClick={toggleSentryMode} className={`w-12 h-6 rounded-full transition-colors relative ${autoMode ? 'bg-green-500' : 'bg-slate-700'}`}>
                     <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${autoMode ? 'translate-x-6' : ''}`}></div>
                 </button>
               </div>
+              
               <div className="h-24 bg-slate-950 rounded-lg flex items-end justify-center gap-1 p-2 border border-slate-800 relative overflow-hidden">
                 <div className="absolute top-1/2 w-full h-[1px] bg-red-500/20 border-t border-dashed border-red-500/50"></div>
-                {/* FIXED: Removed Math.random(), used deterministic math based on index 'i' */}
                 {[...Array(20)].map((_, i) => (
                   <div key={i} className={`flex-1 rounded-t-sm transition-all duration-100 ${acceleration > 5 ? 'bg-red-500' : 'bg-slate-600'}`} style={{ height: `${Math.min(100, (acceleration * 5) + ((i % 5) * 5))}%`, opacity: autoMode ? 1 : 0.2 }}></div>
                 ))}
               </div>
-              <div className="flex justify-between mt-3 text-xs font-mono text-slate-500">
-                <span>FORCE: {acceleration} G</span>
-                <span>THRESHOLD: {IMPACT_THRESHOLD} G</span>
+              <div className="mt-3 text-xs font-mono text-slate-500 space-y-1">
+                <div className="flex justify-between"><span>IMPACT: {acceleration} G</span><span>LIMIT: {IMPACT_THRESHOLD} G</span></div>
+                {/* DEBUG LINE: If this stays 0/0/0, your browser is blocking it */}
+                <div className="text-[10px] text-slate-700 text-center">RAW: X:{debugInfo.x} Y:{debugInfo.y} Z:{debugInfo.z}</div>
               </div>
             </div>
 
