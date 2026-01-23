@@ -7,8 +7,8 @@
 ---
 
 ## 🚀 Live Demo
-- **Frontend (Mobile App):** [https://rakshak-safety.vercel.app](https://rakshak-safety.vercel.app) *(Replace with your Vercel Link)*
-- **Backend API (Docs):** [https://rakshak-api.onrender.com/docs](https://rakshak-api.onrender.com/docs) *(Replace with your Render Link)*
+- **Frontend (Mobile App):** [[https://rakshak-sigma.vercel.app] 
+- **Backend API (Docs):** [https://rakshak-api-sovy.onrender.com] 
 
 ---
 
