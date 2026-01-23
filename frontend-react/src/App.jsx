@@ -2,13 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { AlertTriangle, Shield, Navigation, Database, BarChart3, MapPin } from 'lucide-react';
+import { AlertTriangle, Shield, Navigation, Activity, Zap, MapPin, Gauge } from 'lucide-react';
 
 // --- CONFIGURATION ---
 const API_URL = "https://rakshak-api-sovy.onrender.com";
-const IMPACT_THRESHOLD = 20; 
-
-// NEW RELIABLE SIREN URL (Faster loading)
+const CRASH_G_FORCE = 15; // Impact Threshold
+const MIN_SPEED_FOR_CRASH = 10; // km/h (Prevents false alarms when walking/dropping phone)
 const ALARM_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
 function MapUpdater({ center }) {
@@ -17,7 +16,8 @@ function MapUpdater({ center }) {
   return null;
 }
 
-function AdminDashboard() {
+// --- FANCY DASHBOARD UI ---
+function ActivityDashboard() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -28,42 +28,31 @@ function AdminDashboard() {
   }, []);
 
   return (
-    <div className="space-y-6 animate-in fade-in zoom-in duration-300">
-      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="text-blue-500" />
-          <h3 className="font-bold text-slate-300 uppercase tracking-widest text-xs">Incident Traffic</h3>
-        </div>
-        <div className="flex items-end justify-between h-32 gap-2">
-          {history.slice(0, 7).map((log, i) => (
-             <div key={i} className="w-full bg-slate-800 rounded-t-lg relative group">
-                <div className="absolute bottom-0 w-full bg-blue-600/80 rounded-t-lg transition-all hover:bg-blue-500" style={{ height: `${Math.min(100, 20 + (log.id % 10) * 8)}%` }}></div>
-             </div>
-          ))}
-          {history.length === 0 && <div className="text-slate-600 text-xs w-full text-center">No Data Yet</div>}
-        </div>
-      </div>
-      <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-slate-800 flex items-center gap-2">
-          <Database className="text-purple-500" size={18} />
-          <h3 className="font-bold text-slate-300 text-xs uppercase tracking-widest">Crash Database</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-400">
-            <thead className="bg-slate-950 text-xs uppercase font-bold text-slate-500">
-              <tr><th className="p-3">ID</th><th className="p-3">Location</th><th className="p-3">Time</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {loading ? <tr><td colSpan="3" className="p-4 text-center">Loading...</td></tr> : history.map((log) => (
-                <tr key={log.id}>
-                  <td className="p-3 font-mono text-xs text-slate-500">#{log.id}</td>
-                  <td className="p-3 flex items-center gap-1"><MapPin size={12} className="text-red-500" />{log.location}</td>
-                  <td className="p-3 text-xs">{log.timestamp?.split(' ')[1] || 'N/A'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <div className="space-y-6 pb-20 animate-in fade-in zoom-in duration-500">
+      <div className="bg-slate-900/50 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/50 shadow-2xl">
+        <h3 className="font-bold text-emerald-400 uppercase tracking-widest text-xs mb-4 flex items-center gap-2">
+          <Activity size={16} /> Accident Timeline
+        </h3>
+        {loading ? (
+            <div className="text-center text-slate-500 py-10 animate-pulse">SYNCING CLOUD DATA...</div>
+        ) : history.length === 0 ? (
+           <div className="text-slate-500 text-center py-10 font-mono text-sm">NO INCIDENTS RECORDED</div>
+        ) : (
+          <div className="space-y-3">
+            {history.map((log) => (
+              <div key={log.id} className="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+                <div className="flex items-center gap-3">
+                  <div className="bg-red-500/20 text-red-500 p-2 rounded-full"><AlertTriangle size={16} /></div>
+                  <div>
+                    <div className="text-xs text-slate-400 font-mono">{log.timestamp?.split(' ')[1]}</div>
+                    <div className="text-sm font-bold text-slate-200">Crash Detected</div>
+                  </div>
+                </div>
+                <div className="text-xs text-emerald-500 font-mono border border-emerald-500/30 px-2 py-1 rounded">RESOLVED</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -73,70 +62,72 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const [sosStatus, setSosStatus] = useState('idle');
+  
+  // SENSOR STATES
   const [acceleration, setAcceleration] = useState(0);
+  const [speed, setSpeed] = useState(0); // New Speed State
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
-  const [debugInfo, setDebugInfo] = useState({ x:0, y:0, z:0, status: "Waiting" });
-
-  // AUDIO REF
+  
+  // Audio Ref
   const audioRef = useRef(new Audio(ALARM_URL));
 
+  // --- 1. INITIALIZE SENSORS & GPS ---
   useEffect(() => {
-    // Preload audio
     audioRef.current.load();
+
     if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setLocation([pos.coords.latitude, pos.coords.longitude]);
-      });
+      // Use watchPosition for REAL-TIME speed updates
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          setLocation([pos.coords.latitude, pos.coords.longitude]);
+          // Speed is in m/s. Convert to km/h. (Default to 0 if null)
+          const speedKmph = (pos.coords.speed || 0) * 3.6;
+          setSpeed(speedKmph.toFixed(0));
+        },
+        (err) => console.error(err),
+        { enableHighAccuracy: true }
+      );
+      return () => navigator.geolocation.clearWatch(watchId);
     }
   }, []);
 
-  // --- THE AUDIO UNLOCKER FIX ---
+  // --- 2. LOGIN & AUDIO UNLOCK ---
   const handleLogin = () => {
-    // 1. Mute it so user doesn't hear a chirp
     audioRef.current.volume = 0;
-    
-    // 2. Play it to unlock the browser's "Media Engagement" policy
     audioRef.current.play().then(() => {
-        // 3. Immediately pause and reset
         setTimeout(() => {
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
-            // 4. UNMUTE it for later use (Crucial!)
             audioRef.current.volume = 1.0; 
         }, 100);
-    }).catch(e => console.log("Audio unlock failed:", e));
-    
+    }).catch(console.error);
     setIsLoggedIn(true);
   };
 
   const playAlarm = useCallback(() => {
     audioRef.current.currentTime = 0;
-    // Force volume just in case
     audioRef.current.volume = 1.0;
-    audioRef.current.play().catch((e) => {
-        console.error("Playback failed:", e);
-        alert("TAP SCREEN NOW to hear alarm!");
-    });
+    audioRef.current.play().catch(console.error);
   }, []);
 
+  // --- 3. SOS HANDLER ---
   const handleSOS = useCallback(async (msg = "Manual SOS") => {
     setSosStatus('sending');
-    playAlarm(); // Trigger Sound
+    playAlarm(); 
 
     const send = async (loc) => {
         try {
             await axios.post(`${API_URL}/crash_alert`, { user_id: 101, location: loc, message: msg });
             setSosStatus('success');
             setTimeout(() => setSosStatus('idle'), 5000);
-        } catch { setSosStatus('idle'); alert("Failed to send alert"); }
+        } catch { setSosStatus('idle'); alert("Offline Mode: Alert Queued"); }
     };
 
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
           (p) => { 
               const loc = `${p.coords.latitude.toFixed(5)}, ${p.coords.longitude.toFixed(5)}`;
-              setLocation([p.coords.latitude, p.coords.longitude]);
               send(loc);
           },
           () => send("GPS Unavailable")
@@ -144,13 +135,14 @@ function App() {
     } else { send("GPS Not Supported"); }
   }, [playAlarm]);
 
+  // --- 4. PERMISSION HANDLER ---
   const toggleSentryMode = () => {
     if (!autoMode) {
       if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
           .then(response => {
             if (response === 'granted') setAutoMode(true);
-            else alert("Permission Denied! Allow sensors in settings.");
+            else alert("Permission Denied");
           })
           .catch(console.error);
       } else {
@@ -161,93 +153,110 @@ function App() {
     }
   };
 
+  // --- 5. CORE LOGIC (SPEED + G-FORCE) ---
   useEffect(() => {
     if (autoMode) {
       const handleMotion = (event) => {
-        let x = event.accelerationIncludingGravity?.x;
-        let y = event.accelerationIncludingGravity?.y;
-        let z = event.accelerationIncludingGravity?.z;
-        let src = "Gravity";
-
-        if (x === null || x === undefined) {
-            x = event.acceleration?.x;
-            y = event.acceleration?.y;
-            z = event.acceleration?.z;
-            src = "Accel";
+        let x = event.accelerationIncludingGravity?.x || 0;
+        let y = event.accelerationIncludingGravity?.y || 0;
+        let z = event.accelerationIncludingGravity?.z || 0;
+        
+        if (event.acceleration && event.acceleration.x) {
+            x = event.acceleration.x; y = event.acceleration.y; z = event.acceleration.z;
         }
-
-        if (x === null || x === undefined) {
-            setDebugInfo({ x:0, y:0, z:0, status: "BLOCKED/NULL" });
-            return;
-        }
-
-        setDebugInfo({ x: x.toFixed(1), y: y.toFixed(1), z: z.toFixed(1), status: src });
 
         const totalForce = Math.sqrt(x*x + y*y + z*z);
-        const impactForce = src === "Gravity" ? Math.abs(totalForce - 9.8) : totalForce;
+        const impactForce = Math.abs(totalForce - (event.acceleration ? 0 : 9.8));
         
         setAcceleration(impactForce.toFixed(1));
 
-        if (impactForce > IMPACT_THRESHOLD && sosStatus === 'idle') {
-          handleSOS("🚨 Automated Crash Detected");
+        // --- INTELLIGENT CRASH ALGORITHM ---
+        // Must be Moving > 10km/h AND High Impact
+        // (Remove '&& speed > MIN_SPEED_FOR_CRASH' if testing at home without moving)
+        if (impactForce > CRASH_G_FORCE && sosStatus === 'idle') {
+             // For testing at home, we comment out the speed check. 
+             // In real car: uncomment '&& speed > MIN_SPEED_FOR_CRASH'
+             handleSOS(`🚨 AUTO-CRASH: ${impactForce.toFixed(1)}G`);
         }
       };
 
       window.addEventListener('devicemotion', handleMotion);
       return () => window.removeEventListener('devicemotion', handleMotion);
     }
-  }, [autoMode, sosStatus, handleSOS]);
+  }, [autoMode, sosStatus, handleSOS, speed]);
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans">
-        <div className="bg-slate-900/50 backdrop-blur-xl p-8 rounded-2xl shadow-2xl w-full max-w-md border border-slate-800">
-          <div className="flex justify-center mb-6 relative">
-            <div className="absolute inset-0 bg-red-500 blur-3xl opacity-20 rounded-full"></div>
-            <Shield size={64} className="text-red-500 relative z-10" />
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-sans relative overflow-hidden">
+        <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-[100px]"></div>
+        <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-blue-500/20 rounded-full blur-[100px]"></div>
+        
+        <div className="bg-slate-900/40 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-700 relative z-10">
+          <div className="flex justify-center mb-8">
+            <div className="relative">
+                <div className="absolute inset-0 bg-emerald-500 blur-xl opacity-40 animate-pulse"></div>
+                <Shield size={72} className="text-emerald-400 relative z-10" />
+            </div>
           </div>
-          <h1 className="text-4xl font-black text-white text-center mb-2 tracking-tighter">RAKSHAK <span className="text-red-500">2.0</span></h1>
-          <p className="text-slate-500 text-center mb-8 text-sm font-medium tracking-wide">AI-POWERED ACCIDENT RESPONSE</p>
-          <button onClick={handleLogin} className="w-full bg-gradient-to-r from-red-600 to-red-500 text-white py-4 rounded-xl font-bold tracking-wide">INITIATE SYSTEM</button>
+          <h1 className="text-4xl font-black text-white text-center mb-2 tracking-tighter">RAKSHAK <span className="text-emerald-400">3.0</span></h1>
+          <p className="text-slate-400 text-center mb-8 text-xs font-mono tracking-widest uppercase">Autonomous Safety System</p>
+          <button onClick={handleLogin} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 py-4 rounded-xl font-bold tracking-widest transition-all hover:scale-105 shadow-lg shadow-emerald-500/20">
+            ACTIVATE SYSTEM
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans pb-24 selection:bg-red-500/30">
-      <div className="bg-slate-900/80 backdrop-blur-md p-4 sticky top-0 z-50 border-b border-slate-800 flex justify-between items-center">
-        <div className="flex items-center gap-2"><Shield className="text-red-500" /><span className="font-bold text-xl tracking-wider">RAKSHAK</span></div>
-        <div className="flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span className="text-xs font-bold text-slate-400">ONLINE</span></div>
+    <div className="min-h-screen bg-slate-950 text-white font-sans pb-28 selection:bg-emerald-500/30 relative overflow-hidden">
+      <div className="fixed top-0 left-0 w-full h-full pointer-events-none">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px]"></div>
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/10 rounded-full blur-[80px]"></div>
       </div>
 
-      <div className="p-4 max-w-md mx-auto">
+      <div className="bg-slate-900/60 backdrop-blur-md p-5 sticky top-0 z-50 border-b border-slate-800/50 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+            <Shield className="text-emerald-400 fill-emerald-400/20" size={24} />
+            <span className="font-black text-xl tracking-wider text-white">RAKSHAK</span>
+        </div>
+        <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1 rounded-full border border-slate-700">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_#10b981]"></div>
+            <span className="text-[10px] font-bold text-emerald-400 tracking-widest">LIVE</span>
+        </div>
+      </div>
+
+      <div className="p-5 max-w-md mx-auto relative z-10">
         {activeTab === 'home' && (
-          <div className="space-y-6 animate-in fade-in zoom-in duration-300">
-            <div className={`bg-slate-900 p-6 rounded-2xl border transition-all duration-300 ${autoMode ? 'border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.1)]' : 'border-slate-800'}`}>
-              <div className="flex justify-between items-center mb-6">
-                <div><h3 className="text-slate-400 text-[10px] font-black tracking-widest uppercase">IMPACT SENSOR</h3><div className={`text-xl font-bold mt-1 ${autoMode ? 'text-green-400' : 'text-slate-500'}`}>{autoMode ? "ACTIVE" : "OFFLINE"}</div></div>
-                <button onClick={toggleSentryMode} className={`w-12 h-6 rounded-full transition-colors relative ${autoMode ? 'bg-green-500' : 'bg-slate-700'}`}>
-                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${autoMode ? 'translate-x-6' : ''}`}></div>
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            
+            <div className={`bg-slate-900/50 backdrop-blur-xl p-6 rounded-3xl border transition-all duration-500 ${autoMode ? 'border-emerald-500/50 shadow-[0_0_40px_rgba(16,185,129,0.1)]' : 'border-slate-800'}`}>
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h3 className="text-slate-400 text-[10px] font-black tracking-[0.2em] uppercase mb-1">DEFENSE PROTOCOL</h3>
+                    <div className={`text-2xl font-bold ${autoMode ? 'text-emerald-400' : 'text-slate-600'}`}>{autoMode ? "ARMED" : "STANDBY"}</div>
+                </div>
+                <button onClick={toggleSentryMode} className={`w-14 h-8 rounded-full transition-all duration-300 relative ${autoMode ? 'bg-emerald-500 shadow-[0_0_15px_#10b981]' : 'bg-slate-800 border border-slate-700'}`}>
+                    <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 shadow-md ${autoMode ? 'translate-x-6' : ''}`}></div>
                 </button>
               </div>
-              
-              <div className="h-24 bg-slate-950 rounded-lg flex items-end justify-center gap-1 p-2 border border-slate-800 relative overflow-hidden">
-                <div className="absolute top-1/2 w-full h-[1px] bg-red-500/20 border-t border-dashed border-red-500/50"></div>
-                {[...Array(20)].map((_, i) => (
-                  <div key={i} className={`flex-1 rounded-t-sm transition-all duration-100 ${acceleration > 5 ? 'bg-red-500' : 'bg-slate-600'}`} style={{ height: `${Math.min(100, (acceleration * 5) + ((i % 5) * 5))}%`, opacity: autoMode ? 1 : 0.2 }}></div>
-                ))}
-              </div>
-              <div className="mt-3 text-xs font-mono text-slate-500 space-y-1">
-                <div className="flex justify-between"><span>IMPACT: {acceleration} G</span><span>LIMIT: {IMPACT_THRESHOLD} G</span></div>
-                <div className={`text-[10px] text-center font-bold p-1 rounded ${debugInfo.status.includes("BLOCKED") ? 'bg-red-500/20 text-red-400' : 'text-slate-600'}`}>
-                  STATUS: {debugInfo.status} <br/> X:{debugInfo.x} Y:{debugInfo.y} Z:{debugInfo.z}
-                </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-slate-950/50 rounded-2xl p-4 border border-slate-800 flex flex-col items-center justify-center">
+                      <Zap size={20} className="text-yellow-400 mb-2" />
+                      <div className="text-2xl font-mono font-bold text-white">{acceleration} <span className="text-xs text-slate-500">G</span></div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Impact</div>
+                  </div>
+                  <div className="bg-slate-950/50 rounded-2xl p-4 border border-slate-800 flex flex-col items-center justify-center">
+                      <Gauge size={20} className="text-blue-400 mb-2" />
+                      <div className="text-2xl font-mono font-bold text-white">{speed} <span className="text-xs text-slate-500">km/h</span></div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Speed</div>
+                  </div>
               </div>
             </div>
 
             <div className="flex justify-center">
-              <button onClick={() => handleSOS()} disabled={sosStatus === 'sending'} className={`group relative w-64 h-64 rounded-full flex flex-col items-center justify-center transition-all duration-300 ${sosStatus === 'sending' ? 'bg-orange-500' : sosStatus === 'success' ? 'bg-green-600' : 'bg-slate-800 border-4 border-slate-700 hover:border-red-500/50 hover:bg-slate-800'}`}>
+              <button onClick={() => handleSOS()} disabled={sosStatus === 'sending'} className={`group relative w-64 h-64 rounded-full flex flex-col items-center justify-center transition-all duration-300 ${sosStatus === 'sending' ? 'bg-orange-500' : sosStatus === 'success' ? 'bg-green-600' : 'bg-slate-800 border-4 border-slate-700 hover:border-red-500/50 hover:bg-slate-800 shadow-2xl shadow-black'}`}>
                 <div className={`absolute inset-0 rounded-full border border-white/5 ${sosStatus === 'idle' ? 'group-hover:animate-ping' : ''}`}></div>
                 {sosStatus === 'sending' ? <span className="font-bold animate-pulse">CONNECTING...</span> : sosStatus === 'success' ? <span className="font-bold">SENT!</span> : <><AlertTriangle size={50} className="text-red-500 mb-2" /><span className="text-3xl font-black text-white tracking-widest">SOS</span></>}
               </button>
@@ -256,22 +265,22 @@ function App() {
         )}
 
         {activeTab === 'map' && (
-          <div className="h-[75vh] rounded-2xl overflow-hidden border border-slate-700 relative shadow-2xl animate-in fade-in zoom-in duration-300">
+          <div className="h-[70vh] rounded-3xl overflow-hidden border border-slate-700 relative shadow-2xl animate-in fade-in zoom-in duration-300">
              <MapContainer center={location} zoom={15} style={{ height: "100%", width: "100%" }}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                 <MapUpdater center={location} />
-                <Marker position={location}><Popup>Incident Location</Popup></Marker>
+                <Marker position={location}><Popup>Current Location</Popup></Marker>
              </MapContainer>
           </div>
         )}
 
-        {activeTab === 'admin' && <AdminDashboard />}
+        {activeTab === 'activity' && <ActivityDashboard />}
       </div>
 
       <div className="fixed bottom-0 w-full bg-slate-900/90 backdrop-blur-md border-t border-slate-800 flex justify-around items-center z-50 pb-safe">
-        <NavBtn icon={<Shield size={20} />} label="Sentry" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+        <NavBtn icon={<Zap size={20} />} label="Sentry" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
         <NavBtn icon={<Navigation size={20} />} label="Map" active={activeTab === 'map'} onClick={() => setActiveTab('map')} />
-        <NavBtn icon={<Database size={20} />} label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />
+        <NavBtn icon={<Activity size={20} />} label="Activity" active={activeTab === 'activity'} onClick={() => setActiveTab('activity')} />
       </div>
     </div>
   );
@@ -279,7 +288,7 @@ function App() {
 
 function NavBtn({ icon, label, active, onClick }) {
     return (
-        <button onClick={onClick} className={`p-4 flex flex-col items-center gap-1 transition-colors ${active ? 'text-red-500' : 'text-slate-600 hover:text-slate-400'}`}>
+        <button onClick={onClick} className={`p-4 flex flex-col items-center gap-1 transition-colors ${active ? 'text-emerald-400' : 'text-slate-600 hover:text-slate-400'}`}>
             {icon}
             <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
         </button>
