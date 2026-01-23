@@ -4,7 +4,6 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { AlertTriangle, Shield, Navigation, Database, BarChart3, MapPin } from 'lucide-react';
 
-// --- CONFIGURATION ---
 const API_URL = "https://rakshak-api-sovy.onrender.com";
 const IMPACT_THRESHOLD = 20; 
 
@@ -40,7 +39,6 @@ function AdminDashboard() {
           {history.length === 0 && <div className="text-slate-600 text-xs w-full text-center">No Data Yet</div>}
         </div>
       </div>
-
       <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
         <div className="p-4 border-b border-slate-800 flex items-center gap-2">
           <Database className="text-purple-500" size={18} />
@@ -75,8 +73,8 @@ function App() {
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
   
-  // Debug State: Shows raw X/Y/Z to prove sensor is working
-  const [debugInfo, setDebugInfo] = useState({ x:0, y:0, z:0 });
+  // Debug State
+  const [debugInfo, setDebugInfo] = useState({ x:0, y:0, z:0, source: "None" });
 
   useEffect(() => {
     if ("geolocation" in navigator) {
@@ -108,23 +106,18 @@ function App() {
     } else { send("GPS Not Supported"); }
   }, []);
 
-  // --- FIXED SENSOR TOGGLE ---
-  // We handle permissions HERE (on Click), not in useEffect
   const toggleSentryMode = () => {
     if (!autoMode) {
-      // 1. Try to ask for permission (iOS 13+)
+      // iOS Permission Request
       if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
           .then(response => {
-            if (response === 'granted') {
-              setAutoMode(true);
-            } else {
-              alert("Permission Denied! You must allow sensors for Rakshak to work.");
-            }
+            if (response === 'granted') setAutoMode(true);
+            else alert("Permission Denied! Allow sensors in settings.");
           })
           .catch(console.error);
       } else {
-        // 2. Android/Standard doesn't need asking
+        // Android directly enables
         setAutoMode(true);
       }
     } else {
@@ -135,20 +128,32 @@ function App() {
   useEffect(() => {
     if (autoMode) {
       const handleMotion = (event) => {
-        // Fallback to 0 if sensor is blocked
-        const { x, y, z } = event.accelerationIncludingGravity || { x:0, y:0, z:0 };
+        // UNIVERSAL SENSOR PATCH: Try all possible data sources
+        // 1. Try Gravity (Standard)
+        let x = event.accelerationIncludingGravity?.x;
+        let y = event.accelerationIncludingGravity?.y;
+        let z = event.accelerationIncludingGravity?.z;
+        let src = "Gravity";
+
+        // 2. If null, try pure Acceleration (Some Androids)
+        if (!x && !y && !z) {
+            x = event.acceleration?.x;
+            y = event.acceleration?.y;
+            z = event.acceleration?.z;
+            src = "Accel";
+        }
+
+        // 3. Fallback to 0
+        x = x || 0;
+        y = y || 0;
+        z = z || 0;
+
+        setDebugInfo({ x: x.toFixed(1), y: y.toFixed(1), z: z.toFixed(1), source: src });
+
+        const totalForce = Math.sqrt(x*x + y*y + z*z);
+        // Physics: If source is Gravity, subtract 9.8. If pure Accel, use raw.
+        const impactForce = src === "Gravity" ? Math.abs(totalForce - 9.8) : totalForce;
         
-        // Update Debug Info
-        setDebugInfo({ x: x?.toFixed(1), y: y?.toFixed(1), z: z?.toFixed(1) });
-
-        const totalForce = Math.sqrt(
-          (x || 0) * (x || 0) + 
-          (y || 0) * (y || 0) + 
-          (z || 0) * (z || 0)
-        );
-
-        // Physics: Impact = |Total - 9.8|
-        const impactForce = Math.abs(totalForce - 9.8);
         setAcceleration(impactForce.toFixed(1));
 
         if (impactForce > IMPACT_THRESHOLD && sosStatus === 'idle') {
@@ -190,7 +195,6 @@ function App() {
             <div className={`bg-slate-900 p-6 rounded-2xl border transition-all duration-300 ${autoMode ? 'border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.1)]' : 'border-slate-800'}`}>
               <div className="flex justify-between items-center mb-6">
                 <div><h3 className="text-slate-400 text-[10px] font-black tracking-widest uppercase">IMPACT SENSOR</h3><div className={`text-xl font-bold mt-1 ${autoMode ? 'text-green-400' : 'text-slate-500'}`}>{autoMode ? "ACTIVE" : "OFFLINE"}</div></div>
-                {/* BUTTON TRIGGERS PERMISSION NOW */}
                 <button onClick={toggleSentryMode} className={`w-12 h-6 rounded-full transition-colors relative ${autoMode ? 'bg-green-500' : 'bg-slate-700'}`}>
                     <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${autoMode ? 'translate-x-6' : ''}`}></div>
                 </button>
@@ -204,8 +208,9 @@ function App() {
               </div>
               <div className="mt-3 text-xs font-mono text-slate-500 space-y-1">
                 <div className="flex justify-between"><span>IMPACT: {acceleration} G</span><span>LIMIT: {IMPACT_THRESHOLD} G</span></div>
-                {/* DEBUG LINE: If this stays 0/0/0, your browser is blocking it */}
-                <div className="text-[10px] text-slate-700 text-center">RAW: X:{debugInfo.x} Y:{debugInfo.y} Z:{debugInfo.z}</div>
+                <div className="text-[10px] text-slate-700 text-center">
+                  DEBUG: {debugInfo.source} | X:{debugInfo.x} Y:{debugInfo.y} Z:{debugInfo.z}
+                </div>
               </div>
             </div>
 
