@@ -2,32 +2,95 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { AlertTriangle, Shield, Navigation, Phone, Lock, History } from 'lucide-react';
-import { Analytics } from '@vercel/analytics/react';
+import { AlertTriangle, Shield, Navigation, Database, BarChart3, MapPin } from 'lucide-react';
 
 // --- CONFIGURATION ---
-const API_URL = `https://rakshak-api-sovy.onrender.com`;
-const G_FORCE_THRESHOLD = 25; 
+// Replace with your actual Render URL
+const API_URL = "https://rakshak-api-sovy.onrender.com"; 
+const IMPACT_THRESHOLD = 20; 
 
-// --- HELPER COMPONENT: MOVES MAP TO NEW LOCATION ---
+// --- HELPER COMPONENTS ---
 function MapUpdater({ center }) {
   const map = useMap();
   map.setView(center, 15);
   return null;
 }
 
+// --- ADMIN DASHBOARD ---
+function AdminDashboard() {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    axios.get(`${API_URL}/view_history`)
+      .then(res => {
+        setHistory(res.data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, []);
+
+  return (
+    <div className="space-y-6 animate-in fade-in zoom-in duration-300">
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 className="text-blue-500" />
+          <h3 className="font-bold text-slate-300 uppercase tracking-widest text-xs">Incident Traffic</h3>
+        </div>
+        <div className="flex items-end justify-between h-32 gap-2">
+          {history.slice(0, 7).map((log, i) => (
+             <div key={i} className="w-full bg-slate-800 rounded-t-lg relative group">
+                <div 
+                  className="absolute bottom-0 w-full bg-blue-600/80 rounded-t-lg transition-all hover:bg-blue-500" 
+                  // Deterministic height calculation instead of random
+                  style={{ height: `${Math.min(100, 20 + (log.id % 10) * 8)}%` }}
+                ></div>
+             </div>
+          ))}
+          {history.length === 0 && <div className="text-slate-600 text-xs w-full text-center">No Data Yet</div>}
+        </div>
+      </div>
+
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+        <div className="p-4 border-b border-slate-800 flex items-center gap-2">
+          <Database className="text-purple-500" size={18} />
+          <h3 className="font-bold text-slate-300 text-xs uppercase tracking-widest">Crash Database</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-slate-400">
+            <thead className="bg-slate-950 text-xs uppercase font-bold text-slate-500">
+              <tr><th className="p-3">ID</th><th className="p-3">Location</th><th className="p-3">Time</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {loading ? <tr><td colSpan="3" className="p-4 text-center">Loading...</td></tr> : history.map((log) => (
+                <tr key={log.id}>
+                  <td className="p-3 font-mono text-xs text-slate-500">#{log.id}</td>
+                  <td className="p-3 flex items-center gap-1"><MapPin size={12} className="text-red-500" />{log.location}</td>
+                  <td className="p-3 text-xs">{log.timestamp?.split(' ')[1] || 'N/A'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- MAIN APP ---
 function App() {
+  // 1. ALL STATE HOOKS
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const [sosStatus, setSosStatus] = useState('idle');
   const [acceleration, setAcceleration] = useState(0);
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
-  
-  // NOTE: 'username' is stored here for future expansion
-  const [username, setUsername] = useState('');
 
-  // --- 1. GET USER LOCATION ON STARTUP ---
+  // 2. INITIAL GPS SETUP
   useEffect(() => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition((pos) => {
@@ -36,230 +99,148 @@ function App() {
     }
   }, []);
 
-  // --- 2. DEFINE THE ALERT SENDER (Moved Up to fix "Hoisting" error) ---
-  const sendAlertToBackend = useCallback(async (loc, msg) => {
-    try {
-      await axios.post(`${API_URL}/crash_alert`, {
-        user_id: 101, 
-        location: loc,
-        message: msg
-      });
-      
-      setSosStatus('success');
-      
-      // Play Alarm
-      const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
-      audio.play().catch(e => console.log("Audio blocked", e));
-      
-      setTimeout(() => setSosStatus('idle'), 5000);
-      
-    } catch (error) {
-      alert("⚠️ Connection Failed! Check Server Terminal.");
-      setSosStatus('idle');
-      console.error(error);
+  // 3. SOS HANDLER (useCallback prevents re-creation loops)
+  const handleSOS = useCallback(async (msg = "Manual SOS") => {
+    setSosStatus('sending');
+    const send = async (loc) => {
+        try {
+            await axios.post(`${API_URL}/crash_alert`, { user_id: 101, location: loc, message: msg });
+            setSosStatus('success');
+            setTimeout(() => setSosStatus('idle'), 5000);
+        } catch { 
+            setSosStatus('idle'); 
+            alert("Failed to send alert"); 
+        }
+    };
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+          (p) => { 
+              const loc = `${p.coords.latitude.toFixed(5)}, ${p.coords.longitude.toFixed(5)}`;
+              setLocation([p.coords.latitude, p.coords.longitude]);
+              send(loc);
+          },
+          () => send("GPS Unavailable")
+      );
+    } else {
+      send("GPS Not Supported");
     }
   }, []);
 
-  // --- 3. DEFINE SOS FUNCTION ---
-  const handleSOS = useCallback(async (msg = "Manual SOS Triggered") => {
-    setSosStatus('sending');
-    
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const { latitude, longitude } = pos.coords;
-          setLocation([latitude, longitude]);
-          const locString = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-          await sendAlertToBackend(locString, msg);
-        },
-        async () => {
-          console.warn("GPS Failed");
-          await sendAlertToBackend("GPS Unavailable", msg);
-        }
-      );
-    } else {
-      await sendAlertToBackend("GPS Not Supported", msg);
-    }
-  }, [sendAlertToBackend]);
-
-  // --- 4. AUTOMATION SENSOR (Corrected Logic) ---
+  // 4. SENSOR LOGIC
   useEffect(() => {
     if (autoMode) {
       const handleMotion = (event) => {
         const { x, y, z } = event.accelerationIncludingGravity || { x:0, y:0, z:0 };
         const totalForce = Math.sqrt(x*x + y*y + z*z);
-        setAcceleration(totalForce.toFixed(1));
+        // Physics fix: 0.0 at rest
+        const impactForce = Math.abs(totalForce - 9.8);
+        
+        setAcceleration(impactForce.toFixed(1));
 
-        if (totalForce > G_FORCE_THRESHOLD && sosStatus === 'idle') {
-          handleSOS("🚨 Automated Crash Detected");
+        if (impactForce > IMPACT_THRESHOLD && sosStatus === 'idle') {
+          handleSOS("🚨 Automated Crash Detected (High Impact)");
         }
       };
       
       if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-        DeviceMotionEvent.requestPermission()
-          .then(response => {
-            if (response === 'granted') window.addEventListener('devicemotion', handleMotion);
-          })
-          .catch(console.error);
+        DeviceMotionEvent.requestPermission().then(response => {
+          if (response === 'granted') window.addEventListener('devicemotion', handleMotion);
+        });
       } else {
         window.addEventListener('devicemotion', handleMotion);
       }
-      
       return () => window.removeEventListener('devicemotion', handleMotion);
     }
   }, [autoMode, sosStatus, handleSOS]);
 
-  // --- 5. LOGIN SCREEN ---
+  // 5. CONDITIONAL RENDER (Only valid AFTER all hooks)
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
-        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700">
-          <div className="flex justify-center mb-6">
-            <Shield size={64} className="text-red-500 drop-shadow-lg" />
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans">
+        <div className="bg-slate-900/50 backdrop-blur-xl p-8 rounded-2xl shadow-2xl w-full max-w-md border border-slate-800">
+          <div className="flex justify-center mb-6 relative">
+            <div className="absolute inset-0 bg-red-500 blur-3xl opacity-20 rounded-full"></div>
+            <Shield size={64} className="text-red-500 relative z-10" />
           </div>
-          <h1 className="text-3xl font-bold text-white text-center mb-2 tracking-wide">RAKSHAK</h1>
-          <p className="text-slate-400 text-center mb-8 text-sm">Next-Gen Accident Response System</p>
-          
-          <div className="space-y-4">
-            <div className="relative">
-              <Phone className="absolute left-3 top-3 text-slate-500" size={20}/>
-              <input 
-                type="text" 
-                placeholder="Mobile Number"
-                className="w-full bg-slate-900 text-white py-3 pl-10 rounded-lg border border-slate-700 outline-none"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-            </div>
-            <div className="relative">
-              <Lock className="absolute left-3 top-3 text-slate-500" size={20}/>
-              <input 
-                type="password" 
-                placeholder="Password"
-                className="w-full bg-slate-900 text-white py-3 pl-10 rounded-lg border border-slate-700 outline-none"
-              />
-            </div>
-            <button 
-              onClick={() => setIsLoggedIn(true)}
-              className="w-full bg-gradient-to-r from-red-600 to-red-500 text-white py-3 rounded-lg font-bold hover:scale-105 active:scale-95 transition-all"
-            >
-              SECURE LOGIN
-            </button>
-          </div>
+          <h1 className="text-4xl font-black text-white text-center mb-2 tracking-tighter">RAKSHAK <span className="text-red-500">2.0</span></h1>
+          <p className="text-slate-500 text-center mb-8 text-sm font-medium tracking-wide">AI-POWERED ACCIDENT RESPONSE</p>
+          <button onClick={() => setIsLoggedIn(true)} className="w-full bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white py-4 rounded-xl font-bold shadow-lg shadow-red-900/30 transition-all active:scale-95 tracking-wide">
+             INITIATE SYSTEM
+          </button>
         </div>
       </div>
     );
   }
 
-  // --- 6. MAIN DASHBOARD ---
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans pb-24">
-      {/* HEADER */}
-      <div className="bg-slate-900/80 backdrop-blur-md p-4 sticky top-0 z-50 border-b border-slate-800 flex justify-between items-center shadow-md">
-        <div className="flex items-center gap-2">
-          <Shield className="text-red-500 fill-red-500/10" />
-          <span className="font-bold text-xl tracking-wider">RAKSHAK</span>
-        </div>
-        <div className="bg-green-500/10 text-green-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 border border-green-500/20">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          PROTECTED
-        </div>
+    <div className="min-h-screen bg-slate-950 text-white font-sans pb-24 selection:bg-red-500/30">
+      <div className="bg-slate-900/80 backdrop-blur-md p-4 sticky top-0 z-50 border-b border-slate-800 flex justify-between items-center">
+        <div className="flex items-center gap-2"><Shield className="text-red-500" /><span className="font-bold text-xl tracking-wider">RAKSHAK</span></div>
+        <div className="flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span className="text-xs font-bold text-slate-400">ONLINE</span></div>
       </div>
 
-      {/* CONTENT */}
       <div className="p-4 max-w-md mx-auto">
         {activeTab === 'home' && (
           <div className="space-y-6 animate-in fade-in zoom-in duration-300">
-            {/* SENSOR CARD */}
-            <div className={`bg-slate-900 p-6 rounded-2xl border transition-all duration-300 ${autoMode ? 'border-green-500/50 shadow-[0_0_20px_rgba(34,197,94,0.1)]' : 'border-slate-800'}`}>
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-slate-400 text-xs font-bold tracking-widest uppercase">AI Sentry Mode</h3>
-                  <div className={`text-2xl font-bold mt-1 ${autoMode ? 'text-green-400' : 'text-slate-500'}`}>
-                    {autoMode ? "ACTIVE" : "PAUSED"}
-                  </div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" className="sr-only peer" checked={autoMode} onChange={() => setAutoMode(!autoMode)} />
-                  <div className="w-14 h-7 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500 shadow-inner"></div>
-                </label>
+            <div className={`bg-slate-900 p-6 rounded-2xl border transition-all duration-300 ${autoMode ? 'border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.1)]' : 'border-slate-800'}`}>
+              <div className="flex justify-between items-center mb-6">
+                <div><h3 className="text-slate-400 text-[10px] font-black tracking-widest uppercase">IMPACT SENSOR</h3><div className={`text-xl font-bold mt-1 ${autoMode ? 'text-green-400' : 'text-slate-500'}`}>{autoMode ? "ACTIVE" : "OFFLINE"}</div></div>
+                <button onClick={() => setAutoMode(!autoMode)} className={`w-12 h-6 rounded-full transition-colors relative ${autoMode ? 'bg-green-500' : 'bg-slate-700'}`}>
+                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${autoMode ? 'translate-x-6' : ''}`}></div>
+                </button>
               </div>
-              
-              {/* VISUALIZER - FIXED MATH LOGIC */}
-              <div className="h-24 bg-slate-950/50 rounded-lg flex items-end justify-center gap-1 p-2 border border-slate-800">
-                {[...Array(15)].map((_, i) => (
-                  <div 
-                    key={i} 
-                    className={`w-1.5 rounded-t-sm transition-all duration-75 ${autoMode ? 'bg-green-500' : 'bg-slate-700'}`}
-                    style={{ 
-                      // Fixed: Removed Math.random() to prevent "Impure Render" error
-                      height: `${Math.min(100, (acceleration * 4) + (i % 2 === 0 ? 10 : 5))}%`, 
-                      opacity: autoMode ? 1 : 0.3 
-                    }}
-                  ></div>
+              <div className="h-24 bg-slate-950 rounded-lg flex items-end justify-center gap-1 p-2 border border-slate-800 relative overflow-hidden">
+                <div className="absolute top-1/2 w-full h-[1px] bg-red-500/20 border-t border-dashed border-red-500/50"></div>
+                {/* FIXED: Removed Math.random(), used deterministic math based on index 'i' */}
+                {[...Array(20)].map((_, i) => (
+                  <div key={i} className={`flex-1 rounded-t-sm transition-all duration-100 ${acceleration > 5 ? 'bg-red-500' : 'bg-slate-600'}`} style={{ height: `${Math.min(100, (acceleration * 5) + ((i % 5) * 5))}%`, opacity: autoMode ? 1 : 0.2 }}></div>
                 ))}
               </div>
-              <p className="text-xs text-slate-500 mt-3 text-center font-mono">
-                SENSOR READOUT: {acceleration} m/s²
-              </p>
+              <div className="flex justify-between mt-3 text-xs font-mono text-slate-500">
+                <span>FORCE: {acceleration} G</span>
+                <span>THRESHOLD: {IMPACT_THRESHOLD} G</span>
+              </div>
             </div>
 
-            {/* SOS BUTTON */}
-            <div className="flex justify-center py-4">
-              <button 
-                onClick={() => handleSOS()}
-                disabled={sosStatus === 'sending'}
-                className={`relative w-64 h-64 rounded-full flex flex-col items-center justify-center transition-all duration-300 shadow-2xl ${sosStatus === 'sending' ? 'bg-orange-500 scale-95 animate-pulse' : sosStatus === 'success' ? 'bg-green-600 scale-100' : 'bg-gradient-to-br from-red-600 to-red-800 shadow-red-900/40 hover:scale-105 active:scale-95 border-4 border-red-500/30'}`}
-              >
-                {sosStatus === 'sending' ? (
-                   <span className="text-2xl font-bold tracking-widest">CONNECTING...</span>
-                ) : sosStatus === 'success' ? (
-                   <span className="text-2xl font-bold tracking-widest">SENT!</span>
-                ) : (
-                  <>
-                    <AlertTriangle size={64} className="mb-2 text-white drop-shadow-md" />
-                    <span className="text-4xl font-black tracking-[0.2em] text-white drop-shadow-md">SOS</span>
-                    <span className="text-xs font-bold text-red-200 mt-2 tracking-wider">TAP FOR EMERGENCY</span>
-                  </>
-                )}
+            <div className="flex justify-center">
+              <button onClick={() => handleSOS()} disabled={sosStatus === 'sending'} className={`group relative w-64 h-64 rounded-full flex flex-col items-center justify-center transition-all duration-300 ${sosStatus === 'sending' ? 'bg-orange-500' : sosStatus === 'success' ? 'bg-green-600' : 'bg-slate-800 border-4 border-slate-700 hover:border-red-500/50 hover:bg-slate-800'}`}>
+                <div className={`absolute inset-0 rounded-full border border-white/5 ${sosStatus === 'idle' ? 'group-hover:animate-ping' : ''}`}></div>
+                {sosStatus === 'sending' ? <span className="font-bold animate-pulse">CONNECTING...</span> : sosStatus === 'success' ? <span className="font-bold">SENT!</span> : <><AlertTriangle size={50} className="text-red-500 mb-2" /><span className="text-3xl font-black text-white tracking-widest">SOS</span></>}
               </button>
             </div>
           </div>
         )}
 
-        {/* TAB: MAP */}
         {activeTab === 'map' && (
           <div className="h-[75vh] rounded-2xl overflow-hidden border border-slate-700 relative shadow-2xl animate-in fade-in zoom-in duration-300">
              <MapContainer center={location} zoom={15} style={{ height: "100%", width: "100%" }}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors'/>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                 <MapUpdater center={location} />
-                <Marker position={location}>
-                  <Popup className="font-sans font-bold text-slate-900">📍 You are here</Popup>
-                </Marker>
+                <Marker position={location}><Popup>Incident Location</Popup></Marker>
              </MapContainer>
-             
-             <div className="absolute bottom-4 left-4 right-4 bg-slate-900/90 backdrop-blur p-3 rounded-xl z-[1000] border border-slate-700 flex justify-between items-center shadow-xl">
-                <div>
-                   <div className="text-xs text-slate-400 font-bold uppercase">Current Location</div>
-                   <div className="text-sm font-mono text-white">
-                     {location[0].toFixed(4)}, {location[1].toFixed(4)}
-                   </div>
-                </div>
-                <div className="bg-red-500 px-2 py-1 rounded text-white text-xs font-bold">LIVE</div>
-             </div>
           </div>
         )}
+
+        {activeTab === 'admin' && <AdminDashboard />}
       </div>
 
-      {/* BOTTOM NAV */}
-      <div className="fixed bottom-0 w-full bg-slate-900/90 backdrop-blur-md border-t border-slate-800 p-2 flex justify-around items-center z-50">
-        <button onClick={() => setActiveTab('home')} className={`p-3 rounded-xl flex flex-col items-center transition-all ${activeTab === 'home' ? 'text-red-500 bg-red-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Shield size={24} /><span className="text-[10px] font-bold mt-1 uppercase">Home</span></button>
-        <button onClick={() => setActiveTab('map')} className={`p-3 rounded-xl flex flex-col items-center transition-all ${activeTab === 'map' ? 'text-red-500 bg-red-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Navigation size={24} /><span className="text-[10px] font-bold mt-1 uppercase">Live Map</span></button>
-        <button className="p-3 rounded-xl flex flex-col items-center text-slate-500 opacity-50 cursor-not-allowed"><History size={24} /><span className="text-[10px] font-bold mt-1 uppercase">History</span></button>
+      <div className="fixed bottom-0 w-full bg-slate-900/90 backdrop-blur-md border-t border-slate-800 flex justify-around items-center z-50 pb-safe">
+        <NavBtn icon={<Shield size={20} />} label="Sentry" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+        <NavBtn icon={<Navigation size={20} />} label="Map" active={activeTab === 'map'} onClick={() => setActiveTab('map')} />
+        <NavBtn icon={<Database size={20} />} label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />
       </div>
-      <Analytics />
     </div>
   );
+}
+
+function NavBtn({ icon, label, active, onClick }) {
+    return (
+        <button onClick={onClick} className={`p-4 flex flex-col items-center gap-1 transition-colors ${active ? 'text-red-500' : 'text-slate-600 hover:text-slate-400'}`}>
+            {icon}
+            <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+        </button>
+    )
 }
 
 export default App;
