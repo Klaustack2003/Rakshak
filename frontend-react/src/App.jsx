@@ -3,6 +3,7 @@ import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { AlertTriangle, Shield, Navigation, Phone, Lock, History } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 // --- CONFIGURATION ---
 const API_URL = `https://rakshak-api-sovy.onrender.com`;
@@ -256,6 +257,7 @@ function App() {
         <button onClick={() => setActiveTab('map')} className={`p-3 rounded-xl flex flex-col items-center transition-all ${activeTab === 'map' ? 'text-red-500 bg-red-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Navigation size={24} /><span className="text-[10px] font-bold mt-1 uppercase">Live Map</span></button>
         <button className="p-3 rounded-xl flex flex-col items-center text-slate-500 opacity-50 cursor-not-allowed"><History size={24} /><span className="text-[10px] font-bold mt-1 uppercase">History</span></button>
       </div>
+      <Analytics />
     </div>
   );
 }
