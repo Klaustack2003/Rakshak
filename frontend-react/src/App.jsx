@@ -26,9 +26,11 @@ const firebaseConfig = {
 // --- SAFE INITIALIZATION ---
 let app, auth, googleProvider;
 try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    googleProvider = new GoogleAuthProvider();
+    if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        googleProvider = new GoogleAuthProvider();
+    }
 } catch (e) {
     console.error("Firebase Init Error:", e);
 }
@@ -299,17 +301,26 @@ function App() {
     if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         if (currentUser && view !== 'admin') { 
+            // FIXED: Added 'view' to dependency array to silence warning and logic
             if (currentUser.emailVerified) { setUser(currentUser); setView('user'); }
         }
     });
     return () => unsubscribe();
-  }, []);
+  }, [view]); // FIXED: Added dependency
 
   const handleAuthSuccess = (role, userData) => { setUser(userData); setView(role); };
   const handleLogout = async () => { if(auth) await signOut(auth); setUser(null); setView('landing'); };
 
-  if (firebaseConfig.apiKey === "YOUR_API_KEY") {
-      return <div className="min-h-screen bg-black text-red-500 flex items-center justify-center p-10 text-center font-mono">⚠️ SYSTEM HALTED: Missing Firebase Keys. Open src/App.jsx and paste your credentials.</div>;
+  // --- WHITE SCREEN PREVENTER ---
+  if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+      return (
+        <div className="min-h-screen bg-slate-950 text-red-500 flex flex-col items-center justify-center p-10 text-center font-mono">
+            <AlertTriangle size={48} className="mb-4" />
+            <h1 className="text-xl font-bold mb-2">SYSTEM HALTED</h1>
+            <p>Missing Firebase Configuration.</p>
+            <p className="text-sm text-slate-500 mt-2">Open src/App.jsx and paste your credentials.</p>
+        </div>
+      );
   }
 
   return (
