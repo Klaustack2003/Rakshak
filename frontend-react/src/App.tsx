@@ -1,21 +1,29 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, signInWithPopup, GoogleAuthProvider, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword, 
-  sendEmailVerification, signOut, onAuthStateChanged 
+  sendEmailVerification, signOut, onAuthStateChanged, User as FirebaseUser 
 } from "firebase/auth";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-// ✅ FIX: Added 'Gauge' to imports to prevent ReferenceError
 import { 
-  AlertTriangle, Shield, Navigation, Activity, Zap, Gauge, 
-  Cpu, Globe, CheckCircle, ChevronRight, Lock, 
-  MessageSquare, X, Send, LogOut, Key, Loader2, Mail, User 
+  AlertTriangle, Shield, Navigation, Zap, Gauge, 
+  Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut 
 } from 'lucide-react';
 
-// --- 🔥 FIREBASE CONFIGURATION (YOUR KEYS) ---
+// --- VISUAL COMPONENTS ---
+import { Header } from '@/components/landing/Header';
+import { Hero } from '@/components/landing/Hero';
+import { Features } from '@/components/landing/Features';
+import { InteractiveDemo } from '@/components/landing/InteractiveDemo';
+import { Pricing } from '@/components/landing/Pricing';
+import { Testimonials } from '@/components/landing/Testimonials';
+import { FAQ } from '@/components/landing/FAQ';
+import { CTA } from '@/components/landing/CTA';
+import { Footer } from '@/components/landing/Footer';
+
+// --- 🔥 FIREBASE CONFIGURATION ---
 const firebaseConfig = {
   apiKey: "AIzaSyAuozu4A_9OtGusVCO_pyDt8o8mKl0h3ig",
   authDomain: "rakshak-89deb.firebaseapp.com",
@@ -25,8 +33,7 @@ const firebaseConfig = {
   appId: "1:101062187555:web:5d4b6aaa1f420c4e366f96"
 };
 
-// Initialize Firebase safely
-let app, auth, googleProvider;
+let app, auth: any, googleProvider: any;
 try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
@@ -35,28 +42,28 @@ try {
     console.error("Firebase Init Error:", e);
 }
 
-// --- CONFIGURATION ---
+// --- CONFIG ---
 const API_URL = "https://rakshak-api-sovy.onrender.com";
 const CRASH_G_FORCE = 15;
 const ALARM_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
-function MapUpdater({ center }) {
+function MapUpdater({ center }: { center: [number, number] }) {
   const map = useMap();
   map.setView(center, 15);
   return null;
 }
 
-// --- ERROR BOUNDARY (Prevent White Screens) ---
-class ErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+// --- ERROR BOUNDARY ---
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
+  constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-950 text-red-500 flex flex-col items-center justify-center p-10 font-mono text-center">
+        <div className="min-h-screen bg-black text-red-500 flex flex-col items-center justify-center p-10 font-mono text-center">
           <AlertTriangle size={48} className="mb-4" />
           <h1 className="text-xl font-bold">SYSTEM CRITICAL ERROR</h1>
-          <p className="mt-4 bg-slate-900 p-4 border border-red-900 rounded text-xs overflow-auto max-w-lg">
+          <p className="mt-4 bg-gray-900 p-4 border border-red-900 rounded text-xs overflow-auto max-w-lg">
             {this.state.error && this.state.error.toString()}
           </p>
           <button onClick={() => window.location.reload()} className="mt-6 bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-500">
@@ -69,18 +76,18 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// --- COMPONENT: TECHY AI CHATBOT ---
+// --- RAKSHAK BOT ---
 function RakshakBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([{ sender: 'bot', text: '🟢 Rakshak Neural Link Established.' }]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, isTyping]);
 
-  const handleSend = (e) => {
-    if (e) e.preventDefault();
+  const handleSend = (e: React.FormEvent) => {
+    e.preventDefault();
     if (!input.trim()) return;
     const userText = input;
     setMessages(prev => [...prev, { sender: 'user', text: userText }]);
@@ -90,12 +97,9 @@ function RakshakBot() {
     setTimeout(() => {
       let reply = "Processing data... Query not recognized.";
       const lower = userText.toLowerCase();
-      
       if (lower.includes('admin')) reply = "Admin access requires Commander Level 5 clearance.";
       else if (lower.includes('sos')) reply = "SOS Protocol triggers instant cloud dispatch to emergency contacts.";
       else if (lower.includes('hi') || lower.includes('hello')) reply = "Greetings. Rakshak Systems operational.";
-      else if (lower.includes('how')) reply = "I analyze accelerometer data in real-time to detect G-Force spikes.";
-
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
       setIsTyping(false);
     }, 1000);
@@ -139,37 +143,35 @@ function RakshakBot() {
   );
 }
 
-// --- COMPONENT: AUTH PORTAL (Techy) ---
-function AuthPortal({ onAuthSuccess, onBack }) {
+// --- AUTH PORTAL ---
+function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, data: any) => void, onBack: () => void }) {
   const [role, setRole] = useState('user'); 
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [adminKey, setAdminKey] = useState("");
 
-  const handleRegister = async (e) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true); setError(""); setMessage("");
+    setIsLoading(true); setError("");
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await sendEmailVerification(userCredential.user);
-      setMessage("Verification Link Sent! Check your email.");
       setIsRegistering(false); await signOut(auth); 
-    } catch (err) { setError(err.message.replace("Firebase:", "").trim()); } 
+    } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } 
     finally { setIsLoading(false); }
   };
 
-  const handleLogin = async (e) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true); setError("");
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       if (!userCredential.user.emailVerified) throw new Error("Email not verified.");
       onAuthSuccess("user", userCredential.user);
-    } catch (err) { setError(err.message.replace("Firebase:", "").trim()); } 
+    } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } 
     finally { setIsLoading(false); }
   };
 
@@ -178,10 +180,10 @@ function AuthPortal({ onAuthSuccess, onBack }) {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       onAuthSuccess("user", result.user);
-    } catch (err) { setError(err.message); } finally { setIsLoading(false); }
+    } catch (err: any) { setError(err.message); } finally { setIsLoading(false); }
   };
 
-  const handleAdminLogin = (e) => {
+  const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setTimeout(() => {
@@ -200,35 +202,21 @@ function AuthPortal({ onAuthSuccess, onBack }) {
       
       <div className={`bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border transition-colors duration-500 relative z-10 ${role === 'admin' ? 'border-red-500/50' : 'border-slate-700'}`}>
         <button onClick={onBack} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
-
         <div className="flex bg-slate-950 p-1 rounded-xl mb-8 border border-slate-800">
-            <button onClick={() => { setRole('user'); setError(''); }} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'user' ? 'bg-cyan-500 text-slate-900' : 'text-slate-500 hover:text-white'}`}>USER</button>
-            <button onClick={() => { setRole('admin'); setError(''); }} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'admin' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-white'}`}>COMMANDER</button>
+            <button onClick={() => setRole('user')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'user' ? 'bg-cyan-500 text-slate-900' : 'text-slate-500 hover:text-white'}`}>USER</button>
+            <button onClick={() => setRole('admin')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'admin' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-white'}`}>COMMANDER</button>
         </div>
-
-        <h2 className={`text-2xl font-bold text-center mb-1 ${role === 'admin' ? 'text-red-500 tracking-[0.2em] uppercase' : 'text-white'}`}>
-            {role === 'user' ? (isRegistering ? 'New Account' : 'Welcome Back') : 'RESTRICTED'}
-        </h2>
-
+        
         {error && <div className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-xs flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
-        {message && <div className="mt-4 p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-lg text-emerald-200 text-xs flex items-center gap-2"><CheckCircle size={14}/> {message}</div>}
 
         {role === 'user' && (
             <div className="mt-6 space-y-4">
-                <button onClick={handleGoogleLogin} className="w-full bg-white hover:bg-slate-200 text-slate-900 font-bold py-3 rounded-xl flex justify-center items-center gap-3 text-sm transition-transform hover:scale-[1.02]">
-                   Continue with Google
-                </button>
-                <div className="flex items-center gap-4"><div className="h-[1px] bg-slate-700 flex-1"></div><span className="text-[10px] text-slate-500">OR</span><div className="h-[1px] bg-slate-700 flex-1"></div></div>
-                
+                <button onClick={handleGoogleLogin} className="w-full bg-white hover:bg-slate-200 text-slate-900 font-bold py-3 rounded-xl flex justify-center items-center gap-3 text-sm transition-transform hover:scale-[1.02]">Continue with Google</button>
                 <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4">
                     <div className="relative"><Mail className="absolute left-4 top-3.5 text-slate-500" size={18} /><input type="email" placeholder="Email" required className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
                     <div className="relative"><Key className="absolute left-4 top-3.5 text-slate-500" size={18} /><input type="password" placeholder="Password" required className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
                     <button type="submit" disabled={isLoading} className="w-full bg-cyan-500/10 hover:bg-cyan-500 text-cyan-500 hover:text-slate-900 font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 border border-cyan-500/50">{isLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Register' : 'Login')}</button>
                 </form>
-                
-                <p className="mt-6 text-center text-xs text-slate-400">
-                    {isRegistering ? "Has account?" : "No account?"} <button onClick={() => setIsRegistering(!isRegistering)} className="ml-2 text-cyan-400 hover:underline font-bold">{isRegistering ? "Login" : "Register"}</button>
-                </p>
             </div>
         )}
 
@@ -244,12 +232,29 @@ function AuthPortal({ onAuthSuccess, onBack }) {
   );
 }
 
+// --- HELPER COMPONENT ---
+interface StatBoxProps {
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+}
+
+function StatBox({ label, value, icon }: StatBoxProps) { 
+  return (
+    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex items-center gap-4 hover:border-emerald-500/30 transition-colors">
+      <div className="p-3 bg-slate-950 rounded-xl">{icon}</div>
+      <div>
+        <div className="text-2xl font-black text-white">{value}</div>
+        <div className="text-xs font-bold text-slate-500 uppercase">{label}</div>
+      </div>
+    </div>
+  ); 
+}
+
 // --- ADMIN DASHBOARD ---
-// ✅ FIX: Accepting 'user' prop
-function AdminDashboard({ onLogout, user }) {
-  const [history, setHistory] = useState([]);
+function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
+  const [history, setHistory] = useState<any[]>([]);
   useEffect(() => { axios.get(`${API_URL}/view_history`).then(res => setHistory(res.data)).catch(console.error); }, []);
-  
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
@@ -260,12 +265,14 @@ function AdminDashboard({ onLogout, user }) {
             </div>
             <button onClick={onLogout} className="bg-slate-900 text-slate-400 hover:text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-800"><LogOut size={16} /> ABORT SESSION</button>
          </header>
+         
          <div className="grid md:grid-cols-4 gap-6 mb-8">
             <StatBox label="System Load" value="12%" icon={<Cpu className="text-blue-500"/>} />
             <StatBox label="Total Alerts" value={history.length} icon={<AlertTriangle className="text-yellow-500"/>} />
             <StatBox label="Encryption" value="AES-256" icon={<Key className="text-emerald-500"/>} />
             <StatBox label="Latency" value="24ms" icon={<Zap className="text-purple-500"/>} />
          </div>
+
          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-950"><h3 className="font-bold text-slate-300">Encrypted Incident Logs</h3></div>
             <table className="w-full text-left text-sm text-slate-400">
@@ -278,32 +285,27 @@ function AdminDashboard({ onLogout, user }) {
   );
 }
 
-function StatBox({ label, value, icon }) { return (<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex items-center gap-4 hover:border-emerald-500/30 transition-colors"><div className="p-3 bg-slate-950 rounded-xl">{icon}</div><div><div className="text-2xl font-black text-white">{value}</div><div className="text-xs font-bold text-slate-500 uppercase">{label}</div></div></div>); }
-
 // --- USER APP (Mobile) ---
-function UserApp({ onLogout, user }) {
+function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [activeTab, setActiveTab] = useState('home');
   const [sosStatus, setSosStatus] = useState('idle');
   const [acceleration, setAcceleration] = useState(0);
   const [speed, setSpeed] = useState(0);
   const [autoMode, setAutoMode] = useState(false);
-  const [location, setLocation] = useState([20.5937, 78.9629]); 
-  
-  // ✅ FIX: Safe Audio Init using useRef
-  const audioRef = useRef(null);
+  const [location, setLocation] = useState<[number, number]>([20.5937, 78.9629]); 
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     audioRef.current = new Audio(ALARM_URL);
     if ("geolocation" in navigator) {
       const watchId = navigator.geolocation.watchPosition((pos) => { 
           setLocation([pos.coords.latitude, pos.coords.longitude]); 
-          setSpeed(((pos.coords.speed || 0) * 3.6).toFixed(0)); 
+          setSpeed(Number(((pos.coords.speed || 0) * 3.6).toFixed(0))); 
       }, null, { enableHighAccuracy: true });
       return () => navigator.geolocation.clearWatch(watchId);
     }
   }, []);
 
-  // ✅ FIX: Safe Playback
   const playAlarm = useCallback(() => {
     if(audioRef.current) {
         audioRef.current.currentTime = 0;
@@ -324,13 +326,13 @@ function UserApp({ onLogout, user }) {
 
   useEffect(() => { 
       if (autoMode) { 
-          const handleMotion = (event) => { 
+          const handleMotion = (event: DeviceMotionEvent) => { 
               let x = event.acceleration?.x || 0; 
               let y = event.acceleration?.y || 0; 
               let z = event.acceleration?.z || 0; 
               const totalForce = Math.sqrt(x*x + y*y + z*z); 
-              const impactForce = Math.abs(totalForce - (event.acceleration ? 0 : 9.8)); 
-              setAcceleration(impactForce.toFixed(1)); 
+              const impactForce = Math.abs(totalForce - 9.8); 
+              setAcceleration(Number(impactForce.toFixed(1))); 
               if (impactForce > CRASH_G_FORCE && sosStatus === 'idle') handleSOS(`🚨 AUTO-CRASH: ${impactForce.toFixed(1)}G`); 
           }; 
           window.addEventListener('devicemotion', handleMotion); 
@@ -349,13 +351,21 @@ function UserApp({ onLogout, user }) {
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className={`bg-slate-900/50 backdrop-blur-xl p-6 rounded-3xl border transition-all duration-500 ${autoMode ? 'border-cyan-500/50 shadow-[0_0_40px_rgba(6,182,212,0.1)]' : 'border-slate-800'}`}>
               <div className="flex justify-between items-center mb-8"><div><h3 className="text-slate-400 text-[10px] font-black tracking-[0.2em] uppercase mb-1">DEFENSE PROTOCOL</h3><div className={`text-2xl font-bold ${autoMode ? 'text-cyan-400' : 'text-slate-600'}`}>{autoMode ? "ARMED" : "STANDBY"}</div></div><button onClick={() => setAutoMode(!autoMode)} className={`w-14 h-8 rounded-full transition-all duration-300 relative ${autoMode ? 'bg-cyan-500 shadow-[0_0_15px_#22d3ee]' : 'bg-slate-800 border border-slate-700'}`}><div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 shadow-md ${autoMode ? 'translate-x-6' : ''}`}></div></button></div>
-              <div className="h-24 bg-slate-950 rounded-lg flex items-end justify-center gap-1 p-2 border border-slate-800 relative overflow-hidden mb-6">{[...Array(20)].map((_, i) => (<div key={i} className={`flex-1 rounded-t-sm transition-all duration-100 ${acceleration > 5 ? 'bg-cyan-500' : 'bg-slate-700'}`} style={{ height: `${Math.min(100, (acceleration * 5) + ((i % 5) * 5))}%`, opacity: autoMode ? 1 : 0.2 }}></div>))}</div>
               <div className="grid grid-cols-2 gap-4"><div className="bg-slate-950/50 rounded-2xl p-4 border border-slate-800 flex flex-col items-center justify-center"><Zap size={20} className="text-yellow-400 mb-2" /><div className="text-2xl font-mono font-bold text-white">{acceleration} <span className="text-xs text-slate-500">G</span></div></div><div className="bg-slate-950/50 rounded-2xl p-4 border border-slate-800 flex flex-col items-center justify-center"><Gauge size={20} className="text-blue-400 mb-2" /><div className="text-2xl font-mono font-bold text-white">{speed} <span className="text-xs text-slate-500">km/h</span></div></div></div>
             </div>
             <div className="flex justify-center"><button onClick={() => handleSOS()} disabled={sosStatus === 'sending'} className={`group relative w-64 h-64 rounded-full flex flex-col items-center justify-center transition-all duration-300 ${sosStatus === 'sending' ? 'bg-orange-500' : sosStatus === 'success' ? 'bg-green-600' : 'bg-slate-800 border-4 border-slate-700 hover:border-red-500/50 hover:bg-slate-800 shadow-2xl shadow-black'}`}><div className={`absolute inset-0 rounded-full border border-white/5 ${sosStatus === 'idle' ? 'group-hover:animate-ping' : ''}`}></div>{sosStatus === 'sending' ? <span className="font-bold animate-pulse">CONNECTING...</span> : sosStatus === 'success' ? <span className="font-bold">SENT!</span> : <><AlertTriangle size={50} className="text-red-500 mb-2" /><span className="text-3xl font-black text-white tracking-widest">SOS</span></>}</button></div>
           </div>
         )}
-        {activeTab === 'map' && (<div className="h-[70vh] rounded-3xl overflow-hidden border border-slate-700 relative shadow-2xl animate-in fade-in zoom-in duration-300"><MapContainer center={location} zoom={15} style={{ height: "100%", width: "100%" }}><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><MapUpdater center={location} /><Marker position={location}><Popup>Current Location</Popup></Marker></MapContainer></div>)}
+        {activeTab === 'map' && (
+          <div className="h-[70vh] rounded-3xl overflow-hidden border border-slate-700 relative shadow-2xl animate-in fade-in zoom-in duration-300">
+            {/* @ts-ignore */}
+            <MapContainer center={location} zoom={15} style={{ height: "100%", width: "100%" }}>
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <MapUpdater center={location} />
+              <Marker position={location}><Popup>Current Location</Popup></Marker>
+            </MapContainer>
+          </div>
+        )}
       </div>
       <div className="fixed bottom-0 w-full bg-slate-900/90 backdrop-blur-md border-t border-slate-800 flex justify-around items-center z-50 pb-safe">
         <button onClick={() => setActiveTab('home')} className={`p-4 flex flex-col items-center gap-1 transition-colors ${activeTab==='home' ? 'text-cyan-400' : 'text-slate-600'}`}><Zap size={20}/><span className="text-[10px] font-bold uppercase">Sentry</span></button>
@@ -366,46 +376,47 @@ function UserApp({ onLogout, user }) {
   );
 }
 
-// --- LANDING PAGE ---
-function LandingPage({ onLoginClick }) {
+// --- VISUAL LANDING PAGE ---
+function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans selection:bg-cyan-500/30 overflow-x-hidden relative">
-      <nav className="fixed w-full z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/50"><div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between"><div className="flex items-center gap-2"><Shield className="text-cyan-500 fill-cyan-500/10" size={32} /><span className="text-2xl font-black tracking-tighter">RAKSHAK</span></div><button onClick={onLoginClick} className="bg-white hover:bg-slate-200 text-slate-950 px-6 py-2 rounded-full font-bold transition-all hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.2)] text-sm">LOGIN</button></div></nav>
-      <section className="relative pt-40 pb-20 px-6 flex flex-col items-center text-center z-10"><div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none"></div><h1 className="text-5xl md:text-8xl font-black tracking-tighter mb-6 bg-gradient-to-b from-white to-slate-500 bg-clip-text text-transparent max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000">NEXT-GEN TRAFFIC <br/> <span className="text-cyan-500">SAFETY PROTOCOL</span></h1><p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200">AI-driven accident detection, instant cloud telemetry, and autonomous emergency response.</p><button onClick={onLoginClick} className="px-8 py-4 bg-cyan-500 text-slate-950 rounded-xl font-bold flex items-center gap-2 hover:bg-cyan-400 transition-all shadow-[0_0_30px_rgba(6,182,212,0.3)] animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-300">ACCESS PLATFORM <ChevronRight size={18} /></button></section>
-      <section className="py-20 px-6 max-w-7xl mx-auto grid md:grid-cols-3 gap-8 relative z-10"><FeatureCard icon={<Cpu />} title="Neural Physics Engine" desc="Differentiates potholes from crashes using 3-axis G-Force analysis." /><FeatureCard icon={<Globe />} title="Global Link" desc="Real-time telemetry uplink to Rakshak Cloud via encrypted API." /><FeatureCard icon={<Zap />} title="Instant Response" desc="Zero-latency Telegram dispatch to emergency contacts." /></section>
+    <div className="min-h-screen bg-black">
+      <Header onLoginClick={onLoginClick} />
+      <main className="pt-16">
+        <Hero />
+        <Features />
+        <InteractiveDemo />
+        <Pricing />
+        <Testimonials />
+        <FAQ />
+        <CTA />
+      </main>
+      <Footer />
     </div>
   );
 }
 
-function FeatureCard({ icon, title, desc }) { return (<div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-cyan-500/50 transition-colors backdrop-blur-sm"><div className="mb-6 p-3 bg-slate-800 rounded-xl w-fit text-cyan-400">{icon}</div><h3 className="text-xl font-bold mb-3 text-white">{title}</h3><p className="text-slate-400 text-sm leading-relaxed">{desc}</p></div>); }
-
-// --- MAIN APP (LOOP PROOF) ---
+// --- MAIN APP (FINAL INTEGRATION) ---
 function App() {
   const [view, setView] = useState('landing'); 
-  const [user, setUser] = useState(null);
-  
-  // ✅ FIX: Init loading state correctly based on auth presence to avoid loop
-  const [isLoading, setIsLoading] = useState(true); 
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [isLoading, setIsLoading] = useState(!!auth); 
 
   useEffect(() => {
-    // This is safe because we check state inside the callback
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         if (currentUser) {
-            // Only auto-login if the user is verified AND we aren't already logged in
-            if (currentUser.emailVerified) { 
-                setUser(currentUser);
-                if (view !== 'admin' && view !== 'user') {
-                    setView('user');
-                }
+            if (currentUser.emailVerified && (view === 'landing' || view === 'auth')) {
+                setUser(currentUser as FirebaseUser);
+                setView('user');
             }
         }
-        setIsLoading(false); // Stop loading after check
+        setIsLoading(false); 
     });
     return () => unsubscribe();
-  }, [view]); // ✅ FIX: No dependencies needed, runs once on mount.
+  }, [view]);
 
-  const handleAuthSuccess = (role, userData) => { setUser(userData); setView(role); };
-  const handleLogout = async () => { await signOut(auth); setUser(null); setView('landing'); };
+  const handleAuthSuccess = (role: string, userData: any) => { setUser(userData); setView(role); };
+  const handleLogout = async () => { if(auth) await signOut(auth); setUser(null); setView('landing'); };
 
   return (
     <ErrorBoundary>
