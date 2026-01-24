@@ -9,7 +9,7 @@ import {
   ArrowRight, MessageSquare, X, Send, LogOut, Key, Loader2 
 } from 'lucide-react';
 
-// --- 🔐 SECURITY KEYS (PASTE FROM SUPABASE DASHBOARD HERE) ---
+// --- 🔐 SECURITY KEYS ---
 const SUPABASE_URL = "https://acrykupwuyiyvbnrbgdh.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFjcnlrdXB3dXlpeXZibnJiZ2RoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyNDY3MzIsImV4cCI6MjA4NDgyMjczMn0.u3SSLuXMRG6tQCbmtS5xC6kibj29tlYJhgz9Z1p5cLU";
 
@@ -91,7 +91,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [fullOtp, setFullOtp] = useState(""); // Fixed: Using only this, removed unused 'otp' array
+  const [fullOtp, setFullOtp] = useState(""); 
   
   const handleSendCode = async (e) => {
     if (e) e.preventDefault();
@@ -122,8 +122,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
 
         if (error) throw error;
 
-        // CHECK ROLE
-        if (email === "admin@rakshak.com" || email === "subhadip@example.com") { 
+        if (email === "admin@rakshak.com") { 
             onAuthSuccess("admin", data.user);
         } else {
             onAuthSuccess("user", data.user);
@@ -175,7 +174,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
                     type="text" 
                     autoFocus
                     maxLength={8}
-                    placeholder="12345678" 
+                    placeholder="123456" 
                     className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none font-mono text-center tracking-[0.5em] text-lg" 
                     value={fullOtp} 
                     onChange={(e) => setFullOtp(e.target.value)} 
@@ -236,7 +235,7 @@ function UserApp({ onLogout, userEmail }) {
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
   
-  // FIXED: Use useRef for Audio to prevent "Value cannot be modified" error
+  // FIXED: Use useRef for Audio
   const audioRef = useRef(new Audio(ALARM_URL));
 
   useEffect(() => {
@@ -254,7 +253,7 @@ function UserApp({ onLogout, userEmail }) {
   }, []);
 
   const playAlarm = useCallback(() => {
-    // FIXED: Modifying .current property is allowed
+    // FIXED: Modify .current is allowed
     audioRef.current.currentTime = 0;
     audioRef.current.volume = 1.0;
     audioRef.current.play().catch(console.error);
@@ -312,7 +311,6 @@ function UserApp({ onLogout, userEmail }) {
   );
 }
 
-// --- LANDING ---
 function LandingPage({ onLoginClick }) {
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans selection:bg-emerald-500/30 overflow-x-hidden relative">
