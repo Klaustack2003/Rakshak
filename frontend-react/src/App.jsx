@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { initializeApp } from "firebase/app";
 import { 
@@ -24,7 +23,7 @@ const firebaseConfig = {
   appId: "1:101062187555:web:5d4b6aaa1f420c4e366f96"
 };
 
-// --- SAFE INITIALIZATION ---
+// --- SAFE FIREBASE INIT ---
 let app, auth, googleProvider;
 try {
     if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
@@ -34,6 +33,29 @@ try {
     }
 } catch (e) {
     console.error("Firebase Init Error:", e);
+}
+
+// --- ERROR BOUNDARY ---
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-red-500 flex flex-col items-center justify-center p-10 text-center font-mono">
+          <AlertTriangle size={48} className="mb-4" />
+          <h1 className="text-xl font-bold">SYSTEM CRITICAL ERROR</h1>
+          <p className="mt-4 bg-slate-900 p-4 border border-red-900 rounded text-xs text-left overflow-auto max-w-lg">
+            {this.state.error && this.state.error.toString()}
+          </p>
+          <button onClick={() => window.location.reload()} className="mt-6 bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-500">
+            REBOOT SYSTEM
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // --- CONFIG ---
@@ -47,10 +69,8 @@ function MapUpdater({ center }) {
   return null;
 }
 
-// --- SMART AI BOT ---
-const botKnowledge = {
-  default: "I didn't quite catch that. Try asking about 'Crash Detection', 'Pricing', or say 'Hi'."
-};
+// --- AI BOT ---
+const botKnowledge = { default: "I didn't quite catch that. Try asking about 'Crash Detection', 'Pricing', or say 'Hi'." };
 
 function RakshakBot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -146,7 +166,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!auth) { setError("System Error: Auth not initialized. Check keys."); return; }
+    if (!auth) { setError("System Error: Auth not initialized."); return; }
     setIsLoading(true); setError(""); setMessage("");
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -159,7 +179,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!auth) { setError("System Error: Auth not initialized. Check keys."); return; }
+    if (!auth) { setError("System Error: Auth not initialized."); return; }
     setIsLoading(true); setError("");
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -170,7 +190,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
   };
 
   const handleGoogleLogin = async () => {
-    if (!auth) { setError("System Error: Auth not initialized. Check keys."); return; }
+    if (!auth) { setError("System Error: Auth not initialized."); return; }
     setIsLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -267,7 +287,6 @@ function UserApp({ onLogout, user }) {
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
   
-  // FIXED: Removed audio loading from render phase to prevent loops
   const audioRef = useRef(null);
 
   useEffect(() => {
@@ -348,34 +367,26 @@ function UserApp({ onLogout, user }) {
 function App() {
   const [view, setView] = useState('landing'); 
   const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true); // Default to loading
+  const [isLoading, setIsLoading] = useState(!!auth); 
 
-  // AUTH LISTENER
   useEffect(() => {
-    if (!auth) { setIsLoading(false); return; }
-    
-    // This is the Safe Way: Wait for Firebase to tell us status
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         if (currentUser) {
-            if (view !== 'admin' && currentUser.emailVerified) {
+            if (currentUser.emailVerified && view !== 'admin') { 
                 setUser(currentUser);
-                // Don't override 'admin' view if already set
-                if (view !== 'admin') setView('user');
+                setView('user');
             }
         }
-        setIsLoading(false); // Stop loading ONLY after check is done
+        setIsLoading(false); 
     });
     return () => unsubscribe();
-  }, [view]);
+  }, [view]); // Corrected dependency
 
   const handleAuthSuccess = (role, userData) => { setUser(userData); setView(role); };
   const handleLogout = async () => { if(auth) await signOut(auth); setUser(null); setView('landing'); };
 
   // --- SAFEGUARDS ---
-  if (isLoading) {
-      return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-cyan-500" size={32} /></div>;
-  }
-
   if (firebaseConfig.apiKey === "YOUR_API_KEY") {
       return (
         <div className="min-h-screen bg-slate-950 text-red-500 flex flex-col items-center justify-center p-10 text-center font-mono">
@@ -388,12 +399,20 @@ function App() {
   }
 
   return (
-    <>
-      {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
-      {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
-      {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
-      {view === 'user' && <UserApp onLogout={handleLogout} user={user} />}
-    </>
+    <ErrorBoundary>
+        {isLoading ? (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <Loader2 className="animate-spin text-cyan-500" size={32} />
+            </div>
+        ) : (
+            <>
+              {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
+              {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
+              {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
+              {view === 'user' && <UserApp onLogout={handleLogout} user={user} />}
+            </>
+        )}
+    </ErrorBoundary>
   );
 }
 
