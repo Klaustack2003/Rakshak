@@ -11,7 +11,7 @@ import 'leaflet/dist/leaflet.css';
 import { 
   AlertTriangle, Shield, Navigation, Activity, Zap, Gauge, 
   Cpu, Globe, Server, CheckCircle, ChevronRight, Lock, 
-  ArrowRight, MessageSquare, X, Send, LogOut, Key, Loader2, Mail, UserPlus 
+  ArrowRight, MessageSquare, X, Send, LogOut, Key, Loader2, Mail, User 
 } from 'lucide-react';
 
 // --- 🔥 FIREBASE CONFIGURATION (PASTE YOUR KEYS HERE) ---
@@ -56,7 +56,7 @@ function RakshakBot() {
     setInput("");
     setTimeout(() => {
       let reply = "Accessing database... Command not recognized.";
-      if (input.toLowerCase().includes('admin')) reply = "Admin Uplink is hidden. Click the Shield icon to access.";
+      if (input.toLowerCase().includes('admin')) reply = "Please use the 'Admin' tab on the login screen.";
       if (input.toLowerCase().includes('sos')) reply = "SOS Protocol triggers instant Telegram dispatch.";
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
     }, 1000);
@@ -91,13 +91,16 @@ function RakshakBot() {
 
 // --- COMPONENT: UNIFIED AUTH PORTAL ---
 function AuthPortal({ onAuthSuccess, onBack }) {
-  const [mode, setMode] = useState('login'); 
+  const [role, setRole] = useState('user'); // 'user' or 'admin'
+  const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [adminCode, setAdminCode] = useState("");
+
+  // Admin Specific
+  const [adminKey, setAdminKey] = useState("");
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -105,11 +108,12 @@ function AuthPortal({ onAuthSuccess, onBack }) {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await sendEmailVerification(userCredential.user);
-      setMessage("Registration Successful! Verification link sent to your email. Please verify before logging in.");
-      setMode('login'); 
-      await signOut(auth);
-    } catch (err) { setError(err.message.replace("Firebase:", "").trim()); } 
-    finally { setIsLoading(false); }
+      setMessage("Verification Link Sent! Check your email (Spam folder too).");
+      setIsRegistering(false); // Switch back to login
+      await signOut(auth); 
+    } catch (err) {
+      setError(err.message.replace("Firebase:", "").trim());
+    } finally { setIsLoading(false); }
   };
 
   const handleLogin = async (e) => {
@@ -117,17 +121,20 @@ function AuthPortal({ onAuthSuccess, onBack }) {
     setIsLoading(true); setError("");
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      if (!userCredential.user.emailVerified) throw new Error("Email not verified. Please check your inbox.");
+      if (!userCredential.user.emailVerified) {
+        throw new Error("Email not verified. Please check your inbox.");
+      }
       onAuthSuccess("user", userCredential.user);
-    } catch (err) { setError(err.message.replace("Firebase:", "").trim()); } 
-    finally { setIsLoading(false); }
+    } catch (err) {
+      setError(err.message.replace("Firebase:", "").trim());
+    } finally { setIsLoading(false); }
   };
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      onAuthSuccess("user", result.user);
+      onAuthSuccess("user", result.user); // Google users are always verified users
     } catch (err) { setError(err.message); } finally { setIsLoading(false); }
   };
 
@@ -135,55 +142,125 @@ function AuthPortal({ onAuthSuccess, onBack }) {
     e.preventDefault();
     setIsLoading(true);
     setTimeout(() => {
-        if (email === "commander" && adminCode === "rakshak-alpha") {
-            onAuthSuccess("admin", { email: "ADMIN_COMMANDER", uid: "ADM-001" });
+        // SIMULATED ADMIN CHECK (For Demo Authenticity)
+        // In real world, this would verify against a database role
+        if (email === "commander" && adminKey === "alpha-code") { 
+            onAuthSuccess("admin", { email: "COMMANDER", uid: "ADM-001" });
         } else {
-            setError("Access Denied: Invalid Command Codes");
+            setError("Access Denied: Invalid Credentials");
             setIsLoading(false);
         }
-    }, 1500);
+    }, 1000);
   };
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-sans relative overflow-hidden">
-      <div className={`absolute top-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full blur-[120px] transition-colors duration-1000 ${mode === 'admin' ? 'bg-red-600/20' : 'bg-emerald-500/10'}`}></div>
-      <div className={`bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border transition-colors duration-500 relative z-10 ${mode === 'admin' ? 'border-red-500/50' : 'border-slate-700'}`}>
+      {/* Dynamic Background */}
+      <div className={`absolute top-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full blur-[120px] transition-colors duration-1000 ${role === 'admin' ? 'bg-red-600/20' : 'bg-emerald-500/10'}`}></div>
+      
+      <div className={`bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border transition-colors duration-500 relative z-10 ${role === 'admin' ? 'border-red-500/50' : 'border-slate-700'}`}>
         <button onClick={onBack} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
-        <div className="flex justify-center mb-6">
-           <div className={`p-4 rounded-2xl shadow-inner border transition-colors duration-500 ${mode === 'admin' ? 'bg-red-950/50 border-red-500' : 'bg-slate-800 border-slate-700'}`}>
-             {mode === 'admin' ? <Lock size={40} className="text-red-500" /> : <Shield size={40} className="text-emerald-500" />}
-           </div>
-        </div>
-        <h2 className={`text-2xl font-bold text-center mb-1 ${mode === 'admin' ? 'text-red-500 tracking-[0.2em] uppercase' : 'text-white'}`}>{mode === 'login' ? 'Welcome Back' : mode === 'register' ? 'New Personnel' : 'RESTRICTED'}</h2>
-        <p className="text-slate-400 text-center mb-6 text-xs font-mono uppercase tracking-widest">{mode === 'admin' ? 'Authorized Access Only' : 'Identity Verification'}</p>
 
+        {/* ROLE TABS */}
+        <div className="flex bg-slate-950 p-1 rounded-xl mb-8 border border-slate-800">
+            <button 
+                onClick={() => { setRole('user'); setError(''); setMessage(''); }} 
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'user' ? 'bg-emerald-500 text-slate-900 shadow-lg' : 'text-slate-500 hover:text-white'}`}
+            >
+                USER ACCESS
+            </button>
+            <button 
+                onClick={() => { setRole('admin'); setError(''); setMessage(''); }} 
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'admin' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+            >
+                COMMANDER
+            </button>
+        </div>
+
+        <h2 className={`text-2xl font-bold text-center mb-1 ${role === 'admin' ? 'text-red-500 tracking-[0.2em] uppercase' : 'text-white'}`}>
+            {role === 'user' ? (isRegistering ? 'New Account' : 'Welcome Back') : 'RESTRICTED'}
+        </h2>
+        <p className="text-slate-400 text-center mb-6 text-xs font-mono uppercase tracking-widest">
+            {role === 'admin' ? 'Clearance Level 5 Required' : 'Secure Safety Protocol'}
+        </p>
+
+        {/* MESSAGES */}
         {error && <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-xs flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
         {message && <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-lg text-emerald-200 text-xs flex items-center gap-2"><CheckCircle size={14}/> {message}</div>}
 
-        {mode !== 'admin' && (
+        {/* --- USER FORM --- */}
+        {role === 'user' && (
             <>
-                <form onSubmit={mode === 'login' ? handleLogin : handleRegister} className="space-y-4">
+                <button onClick={handleGoogleLogin} className="w-full bg-white hover:bg-slate-200 text-slate-900 font-bold py-3 rounded-xl flex justify-center items-center gap-3 text-sm shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-transform hover:scale-[1.02]">
+                   <svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                   Instant Login with Google
+                </button>
+
+                <div className="mt-6 flex items-center gap-4">
+                    <div className="h-[1px] bg-slate-700 flex-1"></div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">OR MANUAL LOGIN</span>
+                    <div className="h-[1px] bg-slate-700 flex-1"></div>
+                </div>
+
+                <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4 mt-6">
                     <div className="space-y-2">
-                        <div className="relative"><Mail className="absolute left-4 top-3.5 text-slate-500" size={18} /><input type="email" placeholder="Email Address" required className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                        <div className="relative"><Key className="absolute left-4 top-3.5 text-slate-500" size={18} /><input type="password" placeholder="Password" required className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+                        <div className="relative">
+                            <Mail className="absolute left-4 top-3.5 text-slate-500" size={18} />
+                            <input 
+                                type="email" placeholder="Email Address" required
+                                className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none transition-colors" 
+                                value={email} onChange={(e) => setEmail(e.target.value)} 
+                            />
+                        </div>
+                        <div className="relative">
+                            <Key className="absolute left-4 top-3.5 text-slate-500" size={18} />
+                            <input 
+                                type="password" placeholder="Password" required
+                                className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none transition-colors" 
+                                value={password} onChange={(e) => setPassword(e.target.value)} 
+                            />
+                        </div>
                     </div>
-                    <button type="submit" disabled={isLoading} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.3)]">{isLoading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? 'Access Terminal' : 'Create Account')}</button>
+
+                    <button type="submit" disabled={isLoading} className="w-full bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-slate-900 font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 border border-emerald-500/50">
+                        {isLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Register Account' : 'Verify & Login')}
+                    </button>
                 </form>
-                <div className="mt-6 flex items-center gap-4"><div className="h-[1px] bg-slate-700 flex-1"></div><span className="text-xs text-slate-500">OR</span><div className="h-[1px] bg-slate-700 flex-1"></div></div>
-                <button onClick={handleGoogleLogin} className="w-full mt-6 bg-white hover:bg-slate-200 text-slate-900 font-bold py-3 rounded-xl flex justify-center items-center gap-3 text-sm">Continue with Google</button>
-                <p className="mt-6 text-center text-xs text-slate-400">{mode === 'login' ? "New to the protocol?" : "Already registered?"} <button onClick={() => setMode(mode === 'login' ? 'register' : 'login')} className="ml-2 text-emerald-400 hover:underline font-bold">{mode === 'login' ? "Register Now" : "Login"}</button></p>
-                <button onClick={() => setMode('admin')} className="w-full mt-8 text-[10px] text-slate-700 hover:text-red-500 uppercase tracking-widest transition-colors">Admin Uplink</button>
+
+                <p className="mt-6 text-center text-xs text-slate-400">
+                    {isRegistering ? "Already have an ID?" : "Need an account?"} 
+                    <button onClick={() => setIsRegistering(!isRegistering)} className="ml-2 text-emerald-400 hover:underline font-bold">
+                        {isRegistering ? "Login" : "Register"}
+                    </button>
+                </p>
             </>
         )}
 
-        {mode === 'admin' && (
-            <form onSubmit={handleAdminLogin} className="space-y-4 animate-in fade-in slide-in-from-right-8">
+        {/* --- ADMIN FORM --- */}
+        {role === 'admin' && (
+            <form onSubmit={handleAdminLogin} className="space-y-4 animate-in fade-in zoom-in duration-300">
                 <div className="space-y-2">
-                    <div className="relative"><UserPlus className="absolute left-4 top-3.5 text-red-500" size={18} /><input type="text" placeholder="Commander ID" required className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                    <div className="relative"><Lock className="absolute left-4 top-3.5 text-red-500" size={18} /><input type="password" placeholder="Access Key" required className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono tracking-widest" value={adminCode} onChange={(e) => setAdminCode(e.target.value)} /></div>
+                    <div className="relative">
+                        <User className="absolute left-4 top-3.5 text-red-500" size={18} />
+                        <input 
+                            type="text" placeholder="Commander ID" required
+                            className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono" 
+                            value={email} onChange={(e) => setEmail(e.target.value)} 
+                        />
+                    </div>
+                    <div className="relative">
+                        <Lock className="absolute left-4 top-3.5 text-red-500" size={18} />
+                        <input 
+                            type="password" placeholder="Access Key" required
+                            className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono tracking-widest" 
+                            value={adminKey} onChange={(e) => setAdminKey(e.target.value)} 
+                        />
+                    </div>
                 </div>
-                <button type="submit" disabled={isLoading} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 shadow-[0_0_30px_rgba(220,38,38,0.4)]">{isLoading ? <Loader2 className="animate-spin" /> : "ESTABLISH UPLINK"}</button>
-                <button onClick={() => setMode('login')} className="w-full mt-4 text-xs text-slate-500 hover:text-emerald-400">Return to Standard Login</button>
+
+                <button type="submit" disabled={isLoading} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 shadow-[0_0_30px_rgba(220,38,38,0.4)]">
+                    {isLoading ? <Loader2 className="animate-spin" /> : "ESTABLISH UPLINK"}
+                </button>
             </form>
         )}
       </div>
@@ -192,7 +269,6 @@ function AuthPortal({ onAuthSuccess, onBack }) {
 }
 
 // --- APP & ADMIN DASHBOARDS ---
-// Fixed: Removed 'user' prop from AdminDashboard since it wasn't used in UI
 function AdminDashboard({ onLogout }) {
   const [history, setHistory] = useState([]);
   useEffect(() => { axios.get(`${API_URL}/view_history`).then(res => setHistory(res.data)).catch(console.error); }, []);
@@ -200,7 +276,10 @@ function AdminDashboard({ onLogout }) {
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
          <header className="flex justify-between items-center mb-10 bg-red-950/20 p-6 rounded-2xl border border-red-900/50 backdrop-blur-md">
-            <div className="flex items-center gap-4"><div className="bg-red-600 text-white p-3 rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.5)]"><Lock size={24}/></div><div><h1 className="font-black text-2xl leading-none text-red-500 tracking-tighter">COMMAND CENTER</h1><span className="text-xs text-red-400/60 uppercase tracking-[0.3em]">Clearance Level 5</span></div></div>
+            <div className="flex items-center gap-4">
+               <div className="bg-red-600 text-white p-3 rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.5)]"><Lock size={24}/></div>
+               <div><h1 className="font-black text-2xl leading-none text-red-500 tracking-tighter">COMMAND CENTER</h1><span className="text-xs text-red-400/60 uppercase tracking-[0.3em]">Clearance Level 5</span></div>
+            </div>
             <button onClick={onLogout} className="bg-slate-900 text-slate-400 hover:text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-800"><LogOut size={16} /> ABORT SESSION</button>
          </header>
          <div className="grid md:grid-cols-4 gap-6 mb-8">
@@ -260,7 +339,7 @@ function UserApp({ onLogout, user }) {
   );
 }
 
-// --- LANDING PAGE ---
+// --- LANDING PAGE (Unchanged) ---
 function LandingPage({ onLoginClick }) {
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans selection:bg-emerald-500/30 overflow-x-hidden relative">
@@ -281,8 +360,9 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         if (currentUser) {
-            // Ignore Admin logic here, handle manually in AuthPortal for security separation
-            if (view !== 'admin' && currentUser.emailVerified) { // Only auto-login verified normal users
+            // IGNORE ADMIN LOGIC HERE. Allow AuthPortal to handle role assignment.
+            // Only auto-login if the user is ALREADY verified and we are not in Admin mode.
+            if (view !== 'admin' && currentUser.emailVerified) { 
                 setUser(currentUser);
                 setView('user');
             }
