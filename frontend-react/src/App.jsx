@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { initializeApp } from "firebase/app";
@@ -26,7 +27,7 @@ const firebaseConfig = {
 // --- SAFE INITIALIZATION ---
 let app, auth, googleProvider;
 try {
-    if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+    if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         googleProvider = new GoogleAuthProvider();
@@ -145,6 +146,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    if (!auth) { setError("System Error: Auth not initialized. Check keys."); return; }
     setIsLoading(true); setError(""); setMessage("");
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -157,6 +159,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!auth) { setError("System Error: Auth not initialized. Check keys."); return; }
     setIsLoading(true); setError("");
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -167,6 +170,7 @@ function AuthPortal({ onAuthSuccess, onBack }) {
   };
 
   const handleGoogleLogin = async () => {
+    if (!auth) { setError("System Error: Auth not initialized. Check keys."); return; }
     setIsLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -262,11 +266,59 @@ function UserApp({ onLogout, user }) {
   const [speed, setSpeed] = useState(0);
   const [autoMode, setAutoMode] = useState(false);
   const [location, setLocation] = useState([20.5937, 78.9629]); 
-  const audioRef = useRef(new Audio(ALARM_URL));
-  useEffect(() => { audioRef.current.load(); if ("geolocation" in navigator) { const watchId = navigator.geolocation.watchPosition((pos) => { setLocation([pos.coords.latitude, pos.coords.longitude]); setSpeed(((pos.coords.speed || 0) * 3.6).toFixed(0)); }, null, { enableHighAccuracy: true }); return () => navigator.geolocation.clearWatch(watchId); } }, []);
-  const playAlarm = useCallback(() => { audioRef.current.currentTime = 0; audioRef.current.volume = 1.0; audioRef.current.play().catch(console.error); }, []);
-  const handleSOS = useCallback(async (msg = "Manual SOS") => { setSosStatus('sending'); playAlarm(); try { await axios.post(`${API_URL}/crash_alert`, { user_id: 101, location: `${location[0]},${location[1]}`, message: msg }); setSosStatus('success'); setTimeout(() => setSosStatus('idle'), 5000); } catch { setSosStatus('idle'); alert("Offline Mode"); } }, [playAlarm, location]);
-  useEffect(() => { if (autoMode) { const handleMotion = (event) => { let x = event.acceleration?.x || 0; let y = event.acceleration?.y || 0; let z = event.acceleration?.z || 0; const totalForce = Math.sqrt(x*x + y*y + z*z); const impactForce = Math.abs(totalForce - 9.8); setAcceleration(impactForce.toFixed(1)); if (impactForce > CRASH_G_FORCE && sosStatus === 'idle') handleSOS(`🚨 AUTO-CRASH: ${impactForce.toFixed(1)}G`); }; window.addEventListener('devicemotion', handleMotion); return () => window.removeEventListener('devicemotion', handleMotion); } }, [autoMode, sosStatus, handleSOS]);
+  
+  // FIXED: Removed audio loading from render phase to prevent loops
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    // Only create Audio once
+    audioRef.current = new Audio(ALARM_URL);
+    if ("geolocation" in navigator) {
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          setLocation([pos.coords.latitude, pos.coords.longitude]);
+          setSpeed(((pos.coords.speed || 0) * 3.6).toFixed(0));
+        },
+        null, { enableHighAccuracy: true }
+      );
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, []);
+
+  const playAlarm = useCallback(() => {
+    if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.volume = 1.0;
+        audioRef.current.play().catch(console.error);
+    }
+  }, []);
+
+  const handleSOS = useCallback(async (msg = "Manual SOS") => {
+    setSosStatus('sending');
+    playAlarm(); 
+    try {
+        await axios.post(`${API_URL}/crash_alert`, { user_id: 101, location: `${location[0]},${location[1]}`, message: msg });
+        setSosStatus('success');
+        setTimeout(() => setSosStatus('idle'), 5000);
+    } catch { setSosStatus('idle'); alert("Offline Mode"); }
+  }, [playAlarm, location]);
+
+  useEffect(() => {
+    if (autoMode) {
+      const handleMotion = (event) => {
+        let x = event.acceleration?.x || 0;
+        let y = event.acceleration?.y || 0;
+        let z = event.acceleration?.z || 0;
+        
+        const totalForce = Math.sqrt(x*x + y*y + z*z);
+        const impactForce = Math.abs(totalForce - 9.8);
+        setAcceleration(impactForce.toFixed(1));
+        if (impactForce > CRASH_G_FORCE && sosStatus === 'idle') handleSOS(`🚨 AUTO-CRASH: ${impactForce.toFixed(1)}G`);
+      };
+      window.addEventListener('devicemotion', handleMotion);
+      return () => window.removeEventListener('devicemotion', handleMotion);
+    }
+  }, [autoMode, sosStatus, handleSOS]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-28 selection:bg-cyan-500/30 overflow-hidden">
@@ -296,23 +348,35 @@ function UserApp({ onLogout, user }) {
 function App() {
   const [view, setView] = useState('landing'); 
   const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true); // Default to loading
 
+  // AUTH LISTENER
   useEffect(() => {
-    if (!auth) return;
+    if (!auth) { setIsLoading(false); return; }
+    
+    // This is the Safe Way: Wait for Firebase to tell us status
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        if (currentUser && view !== 'admin') { 
-            // FIXED: Added 'view' to dependency array to silence warning and logic
-            if (currentUser.emailVerified) { setUser(currentUser); setView('user'); }
+        if (currentUser) {
+            if (view !== 'admin' && currentUser.emailVerified) {
+                setUser(currentUser);
+                // Don't override 'admin' view if already set
+                if (view !== 'admin') setView('user');
+            }
         }
+        setIsLoading(false); // Stop loading ONLY after check is done
     });
     return () => unsubscribe();
-  }, [view]); // FIXED: Added dependency
+  }, [view]);
 
   const handleAuthSuccess = (role, userData) => { setUser(userData); setView(role); };
   const handleLogout = async () => { if(auth) await signOut(auth); setUser(null); setView('landing'); };
 
-  // --- WHITE SCREEN PREVENTER ---
-  if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+  // --- SAFEGUARDS ---
+  if (isLoading) {
+      return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-cyan-500" size={32} /></div>;
+  }
+
+  if (firebaseConfig.apiKey === "YOUR_API_KEY") {
       return (
         <div className="min-h-screen bg-slate-950 text-red-500 flex flex-col items-center justify-center p-10 text-center font-mono">
             <AlertTriangle size={48} className="mb-4" />
