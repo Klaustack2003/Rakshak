@@ -174,8 +174,8 @@ function AuthPortal({ onAuthSuccess, onBack }) {
                 <input 
                     type="text" 
                     autoFocus
-                    maxLength={6}
-                    placeholder="123456" 
+                    maxLength={8}
+                    placeholder="12345678" 
                     className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none font-mono text-center tracking-[0.5em] text-lg" 
                     value={fullOtp} 
                     onChange={(e) => setFullOtp(e.target.value)} 
