@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
-// --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
+import { 
+  getAuth, signInWithPopup, GoogleAuthProvider, 
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, 
+  sendEmailVerification, signOut, onAuthStateChanged 
+} from "firebase/auth";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { 
   AlertTriangle, Shield, Navigation, Activity, Zap, Gauge, 
   Cpu, Globe, Server, CheckCircle, ChevronRight, Lock, 
-  ArrowRight, MessageSquare, X, Send, LogOut, Key, Loader2 
+  ArrowRight, MessageSquare, X, Send, LogOut, Key, Loader2, Mail, UserPlus 
 } from 'lucide-react';
 
-// --- 🔥 FIREBASE CONFIGURATION (PASTE FROM FIREBASE CONSOLE) ---
+// --- 🔥 FIREBASE CONFIGURATION (PASTE YOUR KEYS HERE) ---
 const firebaseConfig = {
   apiKey: "AIzaSyAuozu4A_9OtGusVCO_pyDt8o8mKl0h3ig",
   authDomain: "rakshak-89deb.firebaseapp.com",
@@ -40,7 +43,7 @@ function MapUpdater({ center }) {
 // --- COMPONENT: AI CHATBOT ---
 function RakshakBot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([{ sender: 'bot', text: 'Hello! I am Rakshak AI. System Online.' }]);
+  const [messages, setMessages] = useState([{ sender: 'bot', text: 'System Online. Rakshak AI ready.' }]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef(null);
 
@@ -52,22 +55,19 @@ function RakshakBot() {
     setMessages([...messages, { sender: 'user', text: input }]);
     setInput("");
     setTimeout(() => {
-      let reply = "I can help with SOS protocols, Sentry Mode, or Admin Access.";
-      if (input.toLowerCase().includes('google')) reply = "We use secure Google OAuth 2.0 for identity verification.";
+      let reply = "Accessing database... Command not recognized.";
+      if (input.toLowerCase().includes('admin')) reply = "Admin Uplink is hidden. Click the Shield icon to access.";
+      if (input.toLowerCase().includes('sos')) reply = "SOS Protocol triggers instant Telegram dispatch.";
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
     }, 1000);
   };
 
   return (
     <div className="fixed bottom-24 right-6 z-[100]">
-      {!isOpen && (
-        <button onClick={() => setIsOpen(true)} className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 p-4 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.5)] transition-transform hover:scale-110">
-          <MessageSquare size={28} />
-        </button>
-      )}
+      {!isOpen && <button onClick={() => setIsOpen(true)} className="bg-emerald-500 text-slate-900 p-4 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.5)]"><MessageSquare size={28} /></button>}
       {isOpen && (
-        <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-700 w-80 h-96 rounded-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300">
-          <div className="bg-emerald-600/20 p-4 rounded-t-2xl border-b border-emerald-500/20 flex justify-between items-center">
+        <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 w-80 h-96 rounded-2xl shadow-2xl flex flex-col">
+          <div className="bg-emerald-900/30 p-4 rounded-t-2xl border-b border-emerald-500/20 flex justify-between items-center">
             <div className="flex items-center gap-2"><div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div><span className="font-bold text-white text-sm">Rakshak AI</span></div>
             <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white"><X size={18} /></button>
           </div>
@@ -80,8 +80,8 @@ function RakshakBot() {
             <div ref={messagesEndRef} />
           </div>
           <form onSubmit={handleSend} className="p-3 border-t border-slate-800 flex gap-2">
-            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask me..." className="flex-1 bg-slate-950 text-white text-xs p-3 rounded-lg outline-none border border-slate-800 focus:border-emerald-500/50" />
-            <button type="submit" className="bg-emerald-500 text-slate-900 p-2 rounded-lg"><Send size={16} /></button>
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Command..." className="flex-1 bg-transparent text-white text-xs outline-none" />
+            <button type="submit" className="text-emerald-500"><Send size={16} /></button>
           </form>
         </div>
       )}
@@ -89,81 +89,119 @@ function RakshakBot() {
   );
 }
 
-// --- COMPONENT: AUTH PORTAL (GOOGLE LOGIN) ---
+// --- COMPONENT: UNIFIED AUTH PORTAL ---
 function AuthPortal({ onAuthSuccess, onBack }) {
+  const [mode, setMode] = useState('login'); 
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [adminCode, setAdminCode] = useState("");
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setIsLoading(true); setError(""); setMessage("");
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(userCredential.user);
+      setMessage("Registration Successful! Verification link sent to your email. Please verify before logging in.");
+      setMode('login'); 
+      await signOut(auth);
+    } catch (err) { setError(err.message.replace("Firebase:", "").trim()); } 
+    finally { setIsLoading(false); }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setIsLoading(true); setError("");
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      if (!userCredential.user.emailVerified) throw new Error("Email not verified. Please check your inbox.");
+      onAuthSuccess("user", userCredential.user);
+    } catch (err) { setError(err.message.replace("Firebase:", "").trim()); } 
+    finally { setIsLoading(false); }
+  };
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      
-      // ROLE LOGIC: Check email domain or specific email
-      if (user.email === "admin@rakshak.com" || user.email.includes("subhadip")) { // Replace with your logic
-          onAuthSuccess("admin", user);
-      } else {
-          onAuthSuccess("user", user);
-      }
-    } catch (error) {
-      alert("Login Failed: " + error.message);
-    } finally {
-      setIsLoading(false);
-    }
+      onAuthSuccess("user", result.user);
+    } catch (err) { setError(err.message); } finally { setIsLoading(false); }
+  };
+
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setTimeout(() => {
+        if (email === "commander" && adminCode === "rakshak-alpha") {
+            onAuthSuccess("admin", { email: "ADMIN_COMMANDER", uid: "ADM-001" });
+        } else {
+            setError("Access Denied: Invalid Command Codes");
+            setIsLoading(false);
+        }
+    }, 1500);
   };
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-sans relative overflow-hidden">
-      <div className="absolute top-[-20%] right-[-20%] w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[120px]"></div>
-      
-      <div className="bg-slate-900/60 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-700 relative z-10 animate-in fade-in zoom-in duration-300">
+      <div className={`absolute top-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full blur-[120px] transition-colors duration-1000 ${mode === 'admin' ? 'bg-red-600/20' : 'bg-emerald-500/10'}`}></div>
+      <div className={`bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border transition-colors duration-500 relative z-10 ${mode === 'admin' ? 'border-red-500/50' : 'border-slate-700'}`}>
         <button onClick={onBack} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
-
-        <div className="flex justify-center mb-8">
-           <div className="bg-slate-800 p-4 rounded-2xl shadow-inner border border-slate-700"><Shield size={40} className="text-emerald-500" /></div>
+        <div className="flex justify-center mb-6">
+           <div className={`p-4 rounded-2xl shadow-inner border transition-colors duration-500 ${mode === 'admin' ? 'bg-red-950/50 border-red-500' : 'bg-slate-800 border-slate-700'}`}>
+             {mode === 'admin' ? <Lock size={40} className="text-red-500" /> : <Shield size={40} className="text-emerald-500" />}
+           </div>
         </div>
+        <h2 className={`text-2xl font-bold text-center mb-1 ${mode === 'admin' ? 'text-red-500 tracking-[0.2em] uppercase' : 'text-white'}`}>{mode === 'login' ? 'Welcome Back' : mode === 'register' ? 'New Personnel' : 'RESTRICTED'}</h2>
+        <p className="text-slate-400 text-center mb-6 text-xs font-mono uppercase tracking-widest">{mode === 'admin' ? 'Authorized Access Only' : 'Identity Verification'}</p>
 
-        <h2 className="text-2xl font-bold text-center mb-1 text-white">Identity Access</h2>
-        <p className="text-slate-400 text-center mb-8 text-xs font-mono uppercase tracking-widest">Secure OAuth 2.0 Gateway</p>
+        {error && <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-xs flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
+        {message && <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-lg text-emerald-200 text-xs flex items-center gap-2"><CheckCircle size={14}/> {message}</div>}
 
-        <button 
-            onClick={handleGoogleLogin} 
-            disabled={isLoading}
-            className="w-full bg-white hover:bg-slate-200 text-slate-900 font-bold py-4 rounded-xl transition-all flex justify-center items-center gap-3 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-        >
-            {isLoading ? <Loader2 className="animate-spin" /> : (
-                <>
-                    <svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                    Continue with Google
-                </>
-            )}
-        </button>
-        
-        <div className="mt-6 text-center">
-            <p className="text-[10px] text-slate-500">By continuing, you agree to Rakshak's Security Protocols.</p>
-        </div>
+        {mode !== 'admin' && (
+            <>
+                <form onSubmit={mode === 'login' ? handleLogin : handleRegister} className="space-y-4">
+                    <div className="space-y-2">
+                        <div className="relative"><Mail className="absolute left-4 top-3.5 text-slate-500" size={18} /><input type="email" placeholder="Email Address" required className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                        <div className="relative"><Key className="absolute left-4 top-3.5 text-slate-500" size={18} /><input type="password" placeholder="Password" required className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+                    </div>
+                    <button type="submit" disabled={isLoading} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.3)]">{isLoading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? 'Access Terminal' : 'Create Account')}</button>
+                </form>
+                <div className="mt-6 flex items-center gap-4"><div className="h-[1px] bg-slate-700 flex-1"></div><span className="text-xs text-slate-500">OR</span><div className="h-[1px] bg-slate-700 flex-1"></div></div>
+                <button onClick={handleGoogleLogin} className="w-full mt-6 bg-white hover:bg-slate-200 text-slate-900 font-bold py-3 rounded-xl flex justify-center items-center gap-3 text-sm">Continue with Google</button>
+                <p className="mt-6 text-center text-xs text-slate-400">{mode === 'login' ? "New to the protocol?" : "Already registered?"} <button onClick={() => setMode(mode === 'login' ? 'register' : 'login')} className="ml-2 text-emerald-400 hover:underline font-bold">{mode === 'login' ? "Register Now" : "Login"}</button></p>
+                <button onClick={() => setMode('admin')} className="w-full mt-8 text-[10px] text-slate-700 hover:text-red-500 uppercase tracking-widest transition-colors">Admin Uplink</button>
+            </>
+        )}
+
+        {mode === 'admin' && (
+            <form onSubmit={handleAdminLogin} className="space-y-4 animate-in fade-in slide-in-from-right-8">
+                <div className="space-y-2">
+                    <div className="relative"><UserPlus className="absolute left-4 top-3.5 text-red-500" size={18} /><input type="text" placeholder="Commander ID" required className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                    <div className="relative"><Lock className="absolute left-4 top-3.5 text-red-500" size={18} /><input type="password" placeholder="Access Key" required className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono tracking-widest" value={adminCode} onChange={(e) => setAdminCode(e.target.value)} /></div>
+                </div>
+                <button type="submit" disabled={isLoading} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 shadow-[0_0_30px_rgba(220,38,38,0.4)]">{isLoading ? <Loader2 className="animate-spin" /> : "ESTABLISH UPLINK"}</button>
+                <button onClick={() => setMode('login')} className="w-full mt-4 text-xs text-slate-500 hover:text-emerald-400">Return to Standard Login</button>
+            </form>
+        )}
       </div>
     </div>
   );
 }
 
-// --- DASHBOARDS (Updated to show Google Profile Pic) ---
-
-function AdminDashboard({ onLogout, user }) {
+// --- APP & ADMIN DASHBOARDS ---
+// Fixed: Removed 'user' prop from AdminDashboard since it wasn't used in UI
+function AdminDashboard({ onLogout }) {
   const [history, setHistory] = useState([]);
   useEffect(() => { axios.get(`${API_URL}/view_history`).then(res => setHistory(res.data)).catch(console.error); }, []);
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto">
+    <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
-         <header className="flex justify-between items-center mb-10 bg-slate-900/50 p-4 rounded-2xl border border-slate-800 backdrop-blur-md sticky top-4 z-50">
-            <div className="flex items-center gap-3">
-               <div className="bg-red-500/20 p-2 rounded-lg text-red-500"><Lock /></div>
-               <div><h1 className="font-bold text-lg leading-none text-red-500">ADMINISTRATOR</h1><span className="text-[10px] text-slate-500 uppercase tracking-widest">{user?.email}</span></div>
-            </div>
-            <div className="flex items-center gap-4">
-                {user?.photoURL && <img src={user.photoURL} className="w-8 h-8 rounded-full border border-slate-600" alt="Admin" />}
-                <button onClick={onLogout} className="bg-slate-800 text-slate-400 hover:text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2"><LogOut size={14} /> EXIT</button>
-            </div>
+         <header className="flex justify-between items-center mb-10 bg-red-950/20 p-6 rounded-2xl border border-red-900/50 backdrop-blur-md">
+            <div className="flex items-center gap-4"><div className="bg-red-600 text-white p-3 rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.5)]"><Lock size={24}/></div><div><h1 className="font-black text-2xl leading-none text-red-500 tracking-tighter">COMMAND CENTER</h1><span className="text-xs text-red-400/60 uppercase tracking-[0.3em]">Clearance Level 5</span></div></div>
+            <button onClick={onLogout} className="bg-slate-900 text-slate-400 hover:text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-800"><LogOut size={16} /> ABORT SESSION</button>
          </header>
          <div className="grid md:grid-cols-4 gap-6 mb-8">
             <StatBox label="System Load" value="12%" icon={<Cpu className="text-blue-500"/>} />
@@ -172,9 +210,9 @@ function AdminDashboard({ onLogout, user }) {
             <StatBox label="Latency" value="24ms" icon={<Zap className="text-purple-500"/>} />
          </div>
          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-slate-800"><h3 className="font-bold text-slate-300">Encrypted Incident Logs</h3></div>
+            <div className="p-6 border-b border-slate-800 bg-slate-950"><h3 className="font-bold text-slate-300">Encrypted Incident Logs</h3></div>
             <table className="w-full text-left text-sm text-slate-400">
-              <thead className="bg-slate-950 text-xs uppercase font-bold text-slate-500"><tr><th className="p-4">ID</th><th className="p-4">Coordinates</th><th className="p-4">Payload</th><th className="p-4">Timestamp</th></tr></thead>
+              <thead className="bg-slate-900 text-xs uppercase font-bold text-slate-500"><tr><th className="p-4">ID</th><th className="p-4">Coordinates</th><th className="p-4">Payload</th><th className="p-4">Timestamp</th></tr></thead>
               <tbody className="divide-y divide-slate-800">{history.map((log) => (<tr key={log.id} className="hover:bg-slate-800/50 transition-colors"><td className="p-4 font-mono text-emerald-500">ID-{log.id}</td><td className="p-4 font-mono">{log.location}</td><td className="p-4 text-white font-medium">{log.message}</td><td className="p-4 font-mono text-xs">{log.timestamp}</td></tr>))}</tbody>
             </table>
          </div>
@@ -183,9 +221,7 @@ function AdminDashboard({ onLogout, user }) {
   );
 }
 
-function StatBox({ label, value, icon }) {
-  return (<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex items-center gap-4 hover:border-emerald-500/30 transition-colors"><div className="p-3 bg-slate-950 rounded-xl">{icon}</div><div><div className="text-2xl font-black text-white">{value}</div><div className="text-xs font-bold text-slate-500 uppercase">{label}</div></div></div>);
-}
+function StatBox({ label, value, icon }) { return (<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex items-center gap-4 hover:border-emerald-500/30 transition-colors"><div className="p-3 bg-slate-950 rounded-xl">{icon}</div><div><div className="text-2xl font-black text-white">{value}</div><div className="text-xs font-bold text-slate-500 uppercase">{label}</div></div></div>); }
 
 function UserApp({ onLogout, user }) {
   const [activeTab, setActiveTab] = useState('home');
@@ -201,9 +237,7 @@ function UserApp({ onLogout, user }) {
   useEffect(() => { if (autoMode) { const handleMotion = (event) => { let x = event.acceleration?.x || event.accelerationIncludingGravity?.x || 0; let y = event.acceleration?.y || event.accelerationIncludingGravity?.y || 0; let z = event.acceleration?.z || event.accelerationIncludingGravity?.z || 0; const totalForce = Math.sqrt(x*x + y*y + z*z); const impactForce = Math.abs(totalForce - (event.acceleration ? 0 : 9.8)); setAcceleration(impactForce.toFixed(1)); if (impactForce > CRASH_G_FORCE && sosStatus === 'idle') handleSOS(`🚨 AUTO-CRASH: ${impactForce.toFixed(1)}G`); }; window.addEventListener('devicemotion', handleMotion); return () => window.removeEventListener('devicemotion', handleMotion); } }, [autoMode, sosStatus, handleSOS]);
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-28 selection:bg-emerald-500/30 relative overflow-hidden">
-      <div className="bg-slate-900/60 backdrop-blur-md p-5 sticky top-0 z-50 border-b border-slate-800/50 flex justify-between items-center"><div className="flex items-center gap-2"><Shield className="text-emerald-400" size={24} /><span className="font-black text-xl tracking-wider text-white">RAKSHAK</span></div><div className="flex items-center gap-2">
-      {user?.photoURL && <img src={user.photoURL} className="w-6 h-6 rounded-full border border-slate-600" alt="User" />}
-      <button onClick={onLogout} className="text-slate-500 hover:text-white"><LogOut size={20}/></button></div></div>
+      <div className="bg-slate-900/60 backdrop-blur-md p-5 sticky top-0 z-50 border-b border-slate-800/50 flex justify-between items-center"><div className="flex items-center gap-2"><Shield className="text-emerald-400" size={24} /><span className="font-black text-xl tracking-wider text-white">RAKSHAK</span></div><div className="flex items-center gap-2">{user?.photoURL && <img src={user.photoURL} className="w-6 h-6 rounded-full border border-slate-600" alt="User" />}<button onClick={onLogout} className="text-slate-500 hover:text-white"><LogOut size={20}/></button></div></div>
       <div className="p-5 max-w-md mx-auto relative z-10">
         {activeTab === 'home' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -226,6 +260,7 @@ function UserApp({ onLogout, user }) {
   );
 }
 
+// --- LANDING PAGE ---
 function LandingPage({ onLoginClick }) {
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans selection:bg-emerald-500/30 overflow-x-hidden relative">
@@ -243,30 +278,27 @@ function App() {
   const [view, setView] = useState('landing'); 
   const [user, setUser] = useState(null);
 
-  // AUTH STATE LISTENER (Keeps user logged in on refresh)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         if (currentUser) {
-            setUser(currentUser);
-            // Auto-redirect based on email
-            if (currentUser.email === "admin@rakshak.com") setView("admin");
-            else setView("user");
-        } else {
-            setUser(null);
-            setView("landing");
+            // Ignore Admin logic here, handle manually in AuthPortal for security separation
+            if (view !== 'admin' && currentUser.emailVerified) { // Only auto-login verified normal users
+                setUser(currentUser);
+                setView('user');
+            }
         }
     });
     return () => unsubscribe();
-  }, []);
+  }, []); // eslint-disable-line
 
   const handleAuthSuccess = (role, userData) => { setUser(userData); setView(role); };
-  const handleLogout = async () => { await signOut(auth); };
+  const handleLogout = async () => { await signOut(auth); setUser(null); setView('landing'); };
 
   return (
     <>
       {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
       {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
-      {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
+      {view === 'admin' && <AdminDashboard onLogout={handleLogout} />}
       {view === 'user' && <UserApp onLogout={handleLogout} user={user} />}
     </>
   );
