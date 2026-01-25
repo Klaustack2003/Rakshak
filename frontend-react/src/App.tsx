@@ -223,7 +223,7 @@ function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, use
   );
 }
 
-// --- USER DASHBOARD (REMOVED WHATSAPP - DUAL STRIKE ONLY) ---
+// --- USER DASHBOARD (UPDATED WITH YOUR TOKEN) ---
 function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: any, addHistory: (log: any) => void }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
@@ -243,11 +243,12 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
   const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
 
   const CRASH_THRESHOLD = 2.5; 
-  const TELEGRAM_BOT_TOKEN = "7953049187:AAH0pP1sU2_kKO_CqW_2J2aFf_Vj_X-a3_o"; 
+  // --- YOUR NEW TOKEN IS HERE ---
+  const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- THE "DUAL STRIKE" SOS PROTOCOL (No WhatsApp) ---
+  // --- THE "DUAL STRIKE" SOS PROTOCOL (Bot Message + Call) ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
@@ -273,15 +274,15 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
       const primary = contacts[0];
       const cleanPhone = primary.phone.replace(/\D/g, ''); 
 
-      // STEP 1: TELEGRAM (Auto)
+      // STEP 1: TELEGRAM (Auto via GET Request)
       if (primary.telegramId) {
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}`;
         fetch(url)
         .then(res => {
-            if(res.ok) setStatusLog(prev => prev + "\n✅ [1/2] TELEGRAM PACKET SENT.");
-            else setStatusLog(prev => prev + "\n❌ TELEGRAM ERROR.");
+            if(res.ok) setStatusLog(prev => prev + "\n✅ [1/2] TELEGRAM ALERT SENT.");
+            else setStatusLog(prev => prev + "\n❌ TELEGRAM ERROR (Check ID).");
         })
-        .catch(err => setStatusLog(prev => prev + "\n❌ TELEGRAM FAILED."));
+        .catch(err => setStatusLog(prev => prev + "\n❌ TELEGRAM FAILED (Network)."));
       } else {
         setStatusLog(prev => prev + "\n⚠️ SKIPPED TELEGRAM (No ID).");
       }
@@ -291,14 +292,14 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
       setTimeout(() => {
          setStatusLog(prev => prev + "\n✅ [2/2] DIALING EMERGENCY NUMBER...");
          window.location.href = `tel:${cleanPhone}`;
-      }, 2000); // 2 second delay
+      }, 2000); // 2 second delay to read log
 
-      // STEP 3: AUTO-RESET (12 Seconds)
+      // STEP 3: AUTO-RESET (10 Seconds)
       setTimeout(() => {
          setIsSOSActive(false);
          setIsCalling(false);
          setStatusLog("✅ PROTOCOL COMPLETE. SYSTEM RESET.");
-      }, 12000); 
+      }, 10000); 
 
     } else {
         setStatusLog("⚠️ NO GUARDIANS FOUND! SYSTEM STANDBY.");
