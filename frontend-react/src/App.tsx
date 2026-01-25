@@ -4,11 +4,11 @@ import { initializeApp } from "firebase/app";
 import { 
   getAuth, signInWithPopup, GoogleAuthProvider, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword, 
-  sendEmailVerification, signOut, onAuthStateChanged
+  signOut, onAuthStateChanged
 } from "firebase/auth";
 import { 
   AlertTriangle, Shield, Zap, 
-  Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
+  Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
   Globe, Activity, Radio, CheckCircle, MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
@@ -195,8 +195,34 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   );
 }
 
-// --- ADMIN DASHBOARD (CONNECTED PROPERLY) ---
-function AdminDashboard({ onLogout, user, history, clearHistory }: { onLogout: () => void, user: any, history: any[], clearHistory: () => void }) {
+// --- ADMIN DASHBOARD (FIXED: LIVE UPDATES) ---
+function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
+  const [history, setHistory] = useState<any[]>([]);
+
+  // AUTO-REFRESH HISTORY EVERY SECOND
+  useEffect(() => {
+    const fetchHistory = () => {
+        const saved = localStorage.getItem('rakshak_history');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // Sort by latest first
+            setHistory(parsed);
+        }
+    };
+    
+    // Initial fetch
+    fetchHistory();
+    
+    // Set up live polling
+    const interval = setInterval(fetchHistory, 1000); 
+    return () => clearInterval(interval);
+  }, []);
+
+  const clearHistory = () => {
+      localStorage.removeItem('rakshak_history');
+      setHistory([]);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
@@ -226,12 +252,12 @@ function AdminDashboard({ onLogout, user, history, clearHistory }: { onLogout: (
   );
 }
 
-// --- USER DASHBOARD (FIXED MAP + HISTORY) ---
-function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: any, addHistory: (log: any) => void }) {
-  // AUTO-ADD KLAUS (YOUR ID)
+// --- USER DASHBOARD (TELEGRAM + MAP FIX) ---
+function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
     if (!saved) {
+        // Pre-fill with your ID so you don't have to type it
         return [{ id: 1, name: "Klaus", phone: "0000000000", telegramId: "1958635120" }];
     }
     return JSON.parse(saved);
@@ -249,7 +275,6 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
   const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
 
   const CRASH_THRESHOLD = 2.5; 
-  // YOUR TOKEN
   const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
@@ -264,16 +289,19 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Blocked", e));
 
-    // 2. SAVE TO BACKEND (SYNC)
+    // 2. SAVE TO BACKEND (Direct LocalStorage Write)
     const newLog = {
         time: new Date().toLocaleTimeString(),
         location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
         user: user.email,
         status: "SOS DEPLOYED"
     };
-    addHistory(newLog); // Update Parent State (Instant)
+    
+    // Get existing, add new, save back
+    const existingHistory = JSON.parse(localStorage.getItem('rakshak_history') || "[]");
+    localStorage.setItem('rakshak_history', JSON.stringify([newLog, ...existingHistory]));
 
-    // FIX: PROPER GOOGLE MAPS UNIVERSAL LINK
+    // 3. FIXED GOOGLE MAPS LINK
     const googleMapsLink = `https://www.google.com/maps?q=${location.lat},${location.lng}`;
     const alertMsg = `🚨 *SOS! CRASH DETECTED!* 🚨\n\n👤 *User:* ${user.email}\n🚀 *Speed:* ${stats.speed.toFixed(0)} km/h\n💥 *G-Force:* ${stats.gForce}g\n\n📍 *LIVE LOCATION:*\n${googleMapsLink}`;
 
@@ -282,7 +310,7 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
 
       // STEP 1: TELEGRAM
       if (primary.telegramId) {
-        setStatusLog(prev => prev + `\n📡 Sending Data to ID: ${primary.telegramId}...`);
+        setStatusLog(prev => prev + `\n📡 Sending to ID: ${primary.telegramId}...`);
         
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}&parse_mode=Markdown`;
         
@@ -436,16 +464,11 @@ function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   );
 }
 
-// --- MAIN APP (CENTRAL STATE) ---
+// --- MAIN APP ---
 function App() {
   const [view, setView] = useState('landing'); 
   const [user, setUser] = useState<any>(null); 
   const [isAuthChecking, setIsAuthChecking] = useState(true); 
-  // STATE LIFTING: Load history once here
-  const [history, setHistory] = useState<any[]>(() => {
-    const saved = localStorage.getItem('rakshak_history');
-    return saved ? JSON.parse(saved) : [];
-  });
 
   useEffect(() => {
     const checkLogin = async () => {
@@ -463,18 +486,6 @@ function App() {
 
   const handleAuthSuccess = (role: string, userData: any) => { if (role === 'admin') localStorage.setItem('rakshak_role', 'admin'); setUser(userData); setView(role); };
   const handleLogout = async () => { localStorage.removeItem('rakshak_role'); if(auth) await signOut(auth); setUser(null); setView('landing'); };
-  
-  // UPDATE BOTH STATE AND STORAGE
-  const addHistoryLog = (log: any) => { 
-      const updated = [log, ...history];
-      setHistory(updated);
-      localStorage.setItem('rakshak_history', JSON.stringify(updated));
-  };
-
-  const clearHistory = () => {
-      localStorage.removeItem('rakshak_history');
-      setHistory([]);
-  };
 
   if (isAuthChecking) {
     return (
@@ -489,8 +500,8 @@ function App() {
     <ErrorBoundary>
         {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
         {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
-        {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} history={history} clearHistory={clearHistory} />}
-        {view === 'user' && <UserApp onLogout={handleLogout} user={user} addHistory={addHistoryLog} />}
+        {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
+        {view === 'user' && <UserApp onLogout={handleLogout} user={user} />}
     </ErrorBoundary>
   );
 }
