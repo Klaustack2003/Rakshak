@@ -223,7 +223,7 @@ function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, use
   );
 }
 
-// --- USER DASHBOARD (AUTO-RESET ENABLED) ---
+// --- USER DASHBOARD (FIXED: FORCED CALL + SIMPLER TELEGRAM) ---
 function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: any, addHistory: (log: any) => void }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
@@ -243,11 +243,12 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
   const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
 
   const CRASH_THRESHOLD = 2.5; 
+  // USE YOUR REAL BOT TOKEN HERE
   const TELEGRAM_BOT_TOKEN = "7953049187:AAH0pP1sU2_kKO_CqW_2J2aFf_Vj_X-a3_o"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- THE "TRIPLE STRIKE" SOS PROTOCOL (WITH AUTO-RESET) ---
+  // --- THE FIXED SOS PROTOCOL ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
@@ -273,14 +274,19 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
       const primary = contacts[0];
       const cleanPhone = primary.phone.replace(/\D/g, ''); 
 
-      // STEP 1: TELEGRAM (Auto & Instant)
+      // STEP 1: TELEGRAM (Using Simple GET Request to fix CORS)
       if (primary.telegramId) {
-        fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: primary.telegramId, text: alertMsg })
+        // We use encodeURIComponent to ensure the message URL is valid
+        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}`;
+        
+        fetch(url)
+        .then(res => {
+            if(res.ok) setStatusLog(prev => prev + "\n✅ [1/3] TELEGRAM PACKET SENT.");
+            else setStatusLog(prev => prev + "\n❌ TELEGRAM ERROR: Check Chat ID.");
         })
-        .then(() => setStatusLog(prev => prev + "\n✅ [1/3] TELEGRAM PACKET SENT."))
-        .catch(err => setStatusLog(prev => prev + "\n❌ TELEGRAM FAILED: " + err.message));
+        .catch(err => setStatusLog(prev => prev + "\n❌ TELEGRAM FAILED: Network Error."));
+      } else {
+        setStatusLog(prev => prev + "\n⚠️ SKIPPED TELEGRAM (No ID Found).");
       }
 
       // STEP 2: WHATSAPP (Visual Fallback)
@@ -289,28 +295,28 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
         window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(alertMsg)}`, '_blank');
       }, 1500);
 
-      // STEP 3: PHONE CALL (Opens Last)
+      // STEP 3: PHONE CALL (Forced Redirection)
       setIsCalling(true);
       setTimeout(() => {
-         window.open(`tel:${cleanPhone}`, '_self');
-         setStatusLog(prev => prev + "\n✅ [3/3] VOICE LINE ESTABLISHED.");
+         setStatusLog(prev => prev + "\n✅ [3/3] DIALING EMERGENCY NUMBER...");
+         // window.location.href forces the browser to handle the protocol immediately
+         window.location.href = `tel:${cleanPhone}`;
       }, 3000);
 
-      // STEP 4: AUTO-RESET (Back to Normal)
+      // STEP 4: AUTO-RESET
       setTimeout(() => {
          setIsSOSActive(false);
          setIsCalling(false);
          setStatusLog("✅ PROTOCOL COMPLETE. SYSTEM RESET.");
-      }, 10000); // Resets after 10 seconds
+      }, 12000); 
 
     } else {
-        setStatusLog("⚠️ NO GUARDIANS FOUND! SYSTEM STANDBY.");
-        // Reset faster if no contacts
+        setStatusLog("⚠️ NO GUARDIANS FOUND! ADD CONTACTS.");
         setTimeout(() => setIsSOSActive(false), 3000);
     }
   };
 
-  // SENSORS
+  // SENSORS (Unchanged)
   useEffect(() => {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -404,7 +410,8 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
                <div className="space-y-2">
                  <Input placeholder="Name" className="bg-slate-950 border-slate-800 text-white" value={newContact.name} onChange={(e) => setNewContact({...newContact, name: e.target.value})}/>
                  <Input placeholder="Phone (Required)" className="bg-slate-950 border-slate-800 text-white" value={newContact.phone} onChange={(e) => setNewContact({...newContact, phone: e.target.value})}/>
-                 <Input placeholder="Telegram ID (Optional)" className="bg-slate-950 border-slate-800 text-white" value={newContact.telegramId} onChange={(e) => setNewContact({...newContact, telegramId: e.target.value})}/>
+                 <Input placeholder="Telegram ID (Required for Auto-Text)" className="bg-slate-950 border-slate-800 text-white" value={newContact.telegramId} onChange={(e) => setNewContact({...newContact, telegramId: e.target.value})}/>
+                 <div className="text-[10px] text-slate-500">To get ID: Search for your bot in Telegram, type /start.</div>
                  <Button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold">SAVE CONTACT</Button>
                </div>
             </div>
@@ -412,8 +419,15 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
               <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider pl-1">Your Trusted Network ({contacts.length})</h3>
               {contacts.map((contact) => (
                 <div key={contact.id} className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
-                  <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-cyan-950 flex items-center justify-center text-cyan-400"><User size={20} /></div><div><div className="font-bold text-white">{contact.name}</div><div className="text-xs text-slate-400">{contact.phone}</div></div></div>
-                  <div className="flex gap-2"><button onClick={() => window.open(`tel:${contact.phone}`)} className="text-green-500 hover:bg-green-950/30 p-2 rounded-lg transition-colors"><PhoneCall size={18} /></button><button onClick={() => window.open(`https://wa.me/${contact.phone.replace(/\D/g,'')}`)} className="text-green-400 hover:bg-green-950/30 p-2 rounded-lg transition-colors"><MessageCircle size={18} /></button><button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors"><Trash2 size={18} /></button></div>
+                  <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-cyan-950 flex items-center justify-center text-cyan-400"><User size={20} /></div>
+                      <div>
+                          <div className="font-bold text-white">{contact.name}</div>
+                          <div className="text-xs text-slate-400">{contact.phone}</div>
+                          {contact.telegramId ? <div className="text-[10px] text-green-500 flex items-center gap-1"><Zap size={8}/> Telegram Active</div> : <div className="text-[10px] text-red-500 flex items-center gap-1"><AlertTriangle size={8}/> No Telegram ID</div>}
+                      </div>
+                  </div>
+                  <div className="flex gap-2"><button onClick={() => window.open(`tel:${contact.phone}`)} className="text-green-500 hover:bg-green-950/30 p-2 rounded-lg transition-colors"><PhoneCall size={18} /></button><button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors"><Trash2 size={18} /></button></div>
                 </div>
               ))}
             </div>
