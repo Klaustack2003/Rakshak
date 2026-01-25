@@ -9,7 +9,7 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall, CheckCircle
+  Globe, Activity, Radio, CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -88,7 +88,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
       const lower = userText.toLowerCase();
       if (lower.includes('status')) reply = `SPEED: ${stats?.speed?.toFixed(1) || 0} km/h\nG-FORCE: ${stats?.gForce || 1}g`;
       else if (lower.includes('location')) reply = `GPS: ${stats?.location?.lat.toFixed(4)}, ${stats?.location?.lng.toFixed(4)}`;
-      else if (lower.includes('sos')) reply = "SOS Triggered. Executing Dual-Strike Protocol (Telegram + Call).";
+      else if (lower.includes('sos')) reply = "SOS Triggered. Sending Telegram Data Packet.";
       else reply = "Command not recognized.";
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
     }, 600);
@@ -223,11 +223,16 @@ function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, use
   );
 }
 
-// --- USER DASHBOARD (UPDATED WITH YOUR TOKEN) ---
+// --- USER DASHBOARD (TELEGRAM FOCUSED) ---
 function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: any, addHistory: (log: any) => void }) {
+  // PRE-FILLED WITH YOUR CONTACT FOR TESTING
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
-    return saved ? JSON.parse(saved) : [];
+    // If empty, auto-add Klaus for instant testing
+    if (!saved) {
+        return [{ id: 1, name: "Klaus", phone: "0000000000", telegramId: "1958635120" }];
+    }
+    return JSON.parse(saved);
   });
   
   const [activeTab, setActiveTab] = useState('defense'); 
@@ -237,22 +242,21 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
   const [location, setLocation] = useState<{ lat: number, lng: number }>({ lat: 20.5937, lng: 78.9629 }); 
   const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
   const [statusLog, setStatusLog] = useState<string>("");
-  const [isCalling, setIsCalling] = useState(false);
 
   // LOAD GOOGLE MAPS
   const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
 
   const CRASH_THRESHOLD = 2.5; 
-  // --- YOUR NEW TOKEN IS HERE ---
+  // YOUR TOKEN
   const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- THE "DUAL STRIKE" SOS PROTOCOL (Bot Message + Call) ---
+  // --- THE SOS PROTOCOL (TELEGRAM ONLY) ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
-    setStatusLog("CRASH DETECTED! INITIATING DUAL-STRIKE PROTOCOL...");
+    setStatusLog("CRASH DETECTED! INITIATING TELEGRAM UPLINK...");
 
     // 1. SOUND SIREN
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
@@ -268,36 +272,34 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
     addHistory(newLog); 
 
     const googleMapsLink = `http://maps.google.com/?q=${location.lat},${location.lng}`;
-    const alertMsg = `🚨 SOS! CRASH DETECTED!\nUser: ${user.email}\nSpeed: ${stats.speed.toFixed(0)} km/h\nG: ${stats.gForce}g\n\n📍 ${googleMapsLink}`;
+    const alertMsg = `🚨 *SOS! CRASH DETECTED!* 🚨\n\n👤 *User:* ${user.email}\n🚀 *Speed:* ${stats.speed.toFixed(0)} km/h\n💥 *G-Force:* ${stats.gForce}g\n\n📍 *LIVE LOCATION:*\n${googleMapsLink}`;
 
     if (contacts.length > 0) {
       const primary = contacts[0];
-      const cleanPhone = primary.phone.replace(/\D/g, ''); 
 
-      // STEP 1: TELEGRAM (Auto via GET Request)
+      // STEP 1: TELEGRAM (Using GET + Debugging)
       if (primary.telegramId) {
-        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}`;
+        setStatusLog(prev => prev + `\n📡 Targeting ID: ${primary.telegramId}...`);
+        
+        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}&parse_mode=Markdown`;
+        
         fetch(url)
-        .then(res => {
-            if(res.ok) setStatusLog(prev => prev + "\n✅ [1/2] TELEGRAM ALERT SENT.");
-            else setStatusLog(prev => prev + "\n❌ TELEGRAM ERROR (Check ID).");
+        .then(res => res.json())
+        .then(data => {
+            if(data.ok) {
+                setStatusLog(prev => prev + "\n✅ TELEGRAM SENT SUCCESSFULLY!");
+            } else {
+                setStatusLog(prev => prev + `\n❌ TELEGRAM ERROR: ${data.description}`);
+            }
         })
-        .catch(err => setStatusLog(prev => prev + "\n❌ TELEGRAM FAILED (Network)."));
+        .catch(err => setStatusLog(prev => prev + "\n❌ NETWORK ERROR: Check Connection."));
       } else {
         setStatusLog(prev => prev + "\n⚠️ SKIPPED TELEGRAM (No ID).");
       }
 
-      // STEP 2: PHONE CALL (Forced Redirection)
-      setIsCalling(true);
-      setTimeout(() => {
-         setStatusLog(prev => prev + "\n✅ [2/2] DIALING EMERGENCY NUMBER...");
-         window.location.href = `tel:${cleanPhone}`;
-      }, 2000); // 2 second delay to read log
-
-      // STEP 3: AUTO-RESET (10 Seconds)
+      // STEP 2: AUTO-RESET (10 Seconds)
       setTimeout(() => {
          setIsSOSActive(false);
-         setIsCalling(false);
          setStatusLog("✅ PROTOCOL COMPLETE. SYSTEM RESET.");
       }, 10000); 
 
@@ -339,16 +341,6 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
 
   return (
     <div className="min-h-screen bg-black text-gray-200 pb-20 font-sans">
-      <AnimatePresence>
-        {isCalling && (
-            <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[100] bg-red-950/90 backdrop-blur-md flex flex-col items-center justify-center space-y-8">
-                <div className="w-32 h-32 bg-red-600 rounded-full flex items-center justify-center animate-ping"><PhoneCall size={48} className="text-white"/></div>
-                <div className="text-center"><h2 className="text-3xl font-black text-white">AUTO-DIALING</h2><p className="text-xl text-red-200 mt-2">{contacts[0]?.name}</p></div>
-                <button onClick={() => setIsCalling(false)} className="bg-white text-red-600 px-8 py-4 rounded-full font-bold text-xl hover:bg-gray-200">CANCEL</button>
-            </motion.div>
-        )}
-      </AnimatePresence>
-
       <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-40">
         <div className="flex justify-between items-center max-w-lg mx-auto">
           <div className="flex items-center gap-2">
@@ -402,7 +394,7 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
                  <Input placeholder="Name" className="bg-slate-950 border-slate-800 text-white" value={newContact.name} onChange={(e) => setNewContact({...newContact, name: e.target.value})}/>
                  <Input placeholder="Phone (Required)" className="bg-slate-950 border-slate-800 text-white" value={newContact.phone} onChange={(e) => setNewContact({...newContact, phone: e.target.value})}/>
                  <Input placeholder="Telegram ID (Required for Auto-Text)" className="bg-slate-950 border-slate-800 text-white" value={newContact.telegramId} onChange={(e) => setNewContact({...newContact, telegramId: e.target.value})}/>
-                 <div className="text-[10px] text-slate-500">To get ID: Search for your bot in Telegram, type /start.</div>
+                 <div className="text-[10px] text-slate-500">Note: You MUST enable your bot first by clicking 'Start' in Telegram.</div>
                  <Button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold">SAVE CONTACT</Button>
                </div>
             </div>
@@ -418,7 +410,7 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
                           {contact.telegramId ? <div className="text-[10px] text-green-500 flex items-center gap-1"><Zap size={8}/> Telegram Active</div> : <div className="text-[10px] text-red-500 flex items-center gap-1"><AlertTriangle size={8}/> No Telegram ID</div>}
                       </div>
                   </div>
-                  <div className="flex gap-2"><button onClick={() => window.open(`tel:${contact.phone}`)} className="text-green-500 hover:bg-green-950/30 p-2 rounded-lg transition-colors"><PhoneCall size={18} /></button><button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors"><Trash2 size={18} /></button></div>
+                  <div className="flex gap-2"><button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors"><Trash2 size={18} /></button></div>
                 </div>
               ))}
             </div>
