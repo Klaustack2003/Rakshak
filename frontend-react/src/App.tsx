@@ -9,7 +9,7 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, CheckCircle
+  Globe, Activity, Radio, PhoneCall, CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -195,8 +195,27 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   );
 }
 
-// --- ADMIN DASHBOARD ---
-function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, user: any, history: any[] }) {
+// --- ADMIN DASHBOARD (NOW READS FROM PERSISTENT STORAGE) ---
+function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
+  const [history, setHistory] = useState<any[]>([]);
+
+  // Load history from LocalStorage (Simulated Backend)
+  useEffect(() => {
+    const loadData = () => {
+        const saved = localStorage.getItem('rakshak_history');
+        if (saved) setHistory(JSON.parse(saved));
+    };
+    loadData();
+    // Set up an interval to simulate live polling
+    const interval = setInterval(loadData, 2000); 
+    return () => clearInterval(interval);
+  }, []);
+
+  const clearHistory = () => {
+      localStorage.removeItem('rakshak_history');
+      setHistory([]);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
@@ -207,7 +226,10 @@ function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, use
          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center p-6 border-b border-slate-800 bg-slate-950">
                 <h3 className="font-bold text-slate-300">Live Incident Stream</h3>
-                <div className="text-xs text-emerald-500 animate-pulse font-mono">LIVE FEED ACTIVE</div>
+                <div className="flex items-center gap-4">
+                    <div className="text-xs text-emerald-500 animate-pulse font-mono">LIVE FEED ACTIVE</div>
+                    <button onClick={clearHistory} className="text-xs text-red-500 hover:text-white underline">Clear Logs</button>
+                </div>
             </div>
             {history.length === 0 ? (
                 <div className="p-12 text-center text-slate-600 text-sm font-mono">NO ACTIVE INCIDENTS DETECTED.<br/>SYSTEM STANDBY.</div>
@@ -223,7 +245,7 @@ function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, use
   );
 }
 
-// --- USER DASHBOARD (TELEGRAM FOCUSED) ---
+// --- USER DASHBOARD (TELEGRAM + PERSISTENT LOGS) ---
 function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: any, addHistory: (log: any) => void }) {
   // PRE-FILLED WITH YOUR CONTACT FOR TESTING
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
@@ -262,14 +284,17 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Blocked", e));
 
-    // 2. SAVE TO BACKEND
+    // 2. SAVE TO BACKEND (LocalStorage Sync)
     const newLog = {
         time: new Date().toLocaleTimeString(),
         location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
         user: user.email,
         status: "SOS DEPLOYED"
     };
-    addHistory(newLog); 
+    addHistory(newLog); // Update parent state
+    // Also update LocalStorage directly to ensure Admin sees it on refresh
+    const currentHistory = JSON.parse(localStorage.getItem('rakshak_history') || "[]");
+    localStorage.setItem('rakshak_history', JSON.stringify([newLog, ...currentHistory]));
 
     const googleMapsLink = `http://maps.google.com/?q=${location.lat},${location.lng}`;
     const alertMsg = `🚨 *SOS! CRASH DETECTED!* 🚨\n\n👤 *User:* ${user.email}\n🚀 *Speed:* ${stats.speed.toFixed(0)} km/h\n💥 *G-Force:* ${stats.gForce}g\n\n📍 *LIVE LOCATION:*\n${googleMapsLink}`;
@@ -394,7 +419,7 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
                  <Input placeholder="Name" className="bg-slate-950 border-slate-800 text-white" value={newContact.name} onChange={(e) => setNewContact({...newContact, name: e.target.value})}/>
                  <Input placeholder="Phone (Required)" className="bg-slate-950 border-slate-800 text-white" value={newContact.phone} onChange={(e) => setNewContact({...newContact, phone: e.target.value})}/>
                  <Input placeholder="Telegram ID (Required for Auto-Text)" className="bg-slate-950 border-slate-800 text-white" value={newContact.telegramId} onChange={(e) => setNewContact({...newContact, telegramId: e.target.value})}/>
-                 <div className="text-[10px] text-slate-500">Note: You MUST enable your bot first by clicking 'Start' in Telegram.</div>
+                 <div className="text-[10px] text-slate-500">To get ID: Search for your bot in Telegram, type /start.</div>
                  <Button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold">SAVE CONTACT</Button>
                </div>
             </div>
@@ -438,7 +463,12 @@ function App() {
   const [view, setView] = useState('landing'); 
   const [user, setUser] = useState<any>(null); 
   const [isAuthChecking, setIsAuthChecking] = useState(true); 
-  const [history, setHistory] = useState<any[]>([]);
+  
+  // 1. Initialize State from LocalStorage
+  const [history, setHistory] = useState<any[]>(() => {
+    const saved = localStorage.getItem('rakshak_history');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   useEffect(() => {
     const checkLogin = async () => {
@@ -457,6 +487,7 @@ function App() {
   const handleAuthSuccess = (role: string, userData: any) => { if (role === 'admin') localStorage.setItem('rakshak_role', 'admin'); setUser(userData); setView(role); };
   const handleLogout = async () => { localStorage.removeItem('rakshak_role'); if(auth) await signOut(auth); setUser(null); setView('landing'); };
   
+  // 2. Helper to add history from UserApp
   const addHistoryLog = (log: any) => { setHistory(prev => [log, ...prev]); };
 
   if (isAuthChecking) {
@@ -472,7 +503,7 @@ function App() {
     <ErrorBoundary>
         {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
         {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
-        {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} history={history} />}
+        {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
         {view === 'user' && <UserApp onLogout={handleLogout} user={user} addHistory={addHistoryLog} />}
     </ErrorBoundary>
   );
