@@ -4,13 +4,18 @@ import { initializeApp } from "firebase/app";
 import { 
   getAuth, signInWithPopup, GoogleAuthProvider, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword, 
-  sendEmailVerification, signOut, onAuthStateChanged} from "firebase/auth";
+  sendEmailVerification, signOut, onAuthStateChanged
+} from "firebase/auth";
 import { 
   AlertTriangle, Shield, Zap, 
-  Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2
+  Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
+  Globe, Activity, Radio // Added Globe, Activity, Radio
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react'; // Ensure you have this installed, or use 'framer-motion'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { Icon } from 'leaflet'; 
+import 'leaflet/dist/leaflet.css';
+
 // --- VISUAL COMPONENTS ---
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
@@ -70,10 +75,10 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-// --- RAKSHAK BOT ---
-function RakshakBot() {
+// --- SMART RAKSHAK BOT (CONTEXT AWARE) ---
+function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([{ sender: 'bot', text: 'Rakshak Neural Link Established.' }]);
+  const [messages, setMessages] = useState([{ sender: 'bot', text: 'Rakshak Neural Link Established. Ready.' }]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -89,22 +94,39 @@ function RakshakBot() {
     setIsTyping(true);
 
     setTimeout(() => {
-      let reply = "Processing data... Query not recognized.";
+      let reply = "Processing data...";
       const lower = userText.toLowerCase();
-      if (lower.includes('admin')) reply = "Admin access requires Commander Level 5 clearance.";
-      else if (lower.includes('sos')) reply = "SOS Protocol triggers instant cloud dispatch to emergency contacts.";
-      else if (lower.includes('hi') || lower.includes('hello')) reply = "Greetings. Rakshak Systems operational.";
+      
+      // Context Aware Responses
+      if (lower.includes('status') || lower.includes('report')) {
+        if (stats) {
+            reply = `SYSTEM NOMINAL.\nSpeed: ${stats.speed?.toFixed(1) || 0} km/h\nG-Force: ${stats.gForce || 1}g\nAltitude: ${stats.altitude?.toFixed(0) || 0}m`;
+        } else {
+            reply = "Sensor data unavailable. Please initialize Defense Protocol.";
+        }
+      } 
+      else if (lower.includes('location') || lower.includes('where')) {
+         if (stats?.location) {
+             reply = `GPS LOCK ESTABLISHED.\nLat: ${stats.location[0].toFixed(4)}\nLng: ${stats.location[1].toFixed(4)}`;
+         } else {
+             reply = "GPS Signal Lost.";
+         }
+      }
+      else if (lower.includes('sos') || lower.includes('help')) reply = "Press the RED BUTTON to trigger emergency protocols and alert your contacts via SMS.";
+      else if (lower.includes('hi') || lower.includes('hello')) reply = `Greetings ${user?.email ? user.email.split('@')[0] : 'Operator'}. Rakshak systems operational.`;
+      else reply = "Command not recognized. Try 'Status', 'Location', or 'Help'.";
+
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
       setIsTyping(false);
-    }, 1000);
+    }, 800);
   };
 
   return (
     <div className="fixed bottom-8 right-8 z-[100] font-sans">
       {!isOpen && (
-        <button onClick={() => setIsOpen(true)} className="group relative flex items-center justify-center w-16 h-16 bg-cyan-500 hover:bg-cyan-400 rounded-full shadow-[0_0_30px_rgba(6,182,212,0.6)] transition-all hover:scale-110">
-          <MessageSquare size={32} className="text-slate-900" />
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+        <button onClick={() => setIsOpen(true)} className="group relative flex items-center justify-center w-16 h-16 bg-cyan-600 hover:bg-cyan-500 rounded-full shadow-[0_0_30px_rgba(6,182,212,0.6)] transition-all hover:scale-110">
+          <MessageSquare size={32} className="text-white" />
+          <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
         </button>
       )}
       {isOpen && (
@@ -116,19 +138,19 @@ function RakshakBot() {
             </div>
             <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white"><X size={18} /></button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-black/40">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-xl text-xs leading-relaxed ${msg.sender === 'user' ? 'bg-cyan-600 text-white rounded-br-none' : 'bg-slate-800 border border-slate-700 text-slate-300 rounded-bl-none'}`}>
+                <div className={`max-w-[85%] p-3 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${msg.sender === 'user' ? 'bg-cyan-600 text-white rounded-br-none' : 'bg-slate-800 border border-slate-700 text-slate-300 rounded-bl-none'}`}>
                     {msg.text}
                 </div>
               </div>
             ))}
-            {isTyping && <div className="text-[10px] text-cyan-500/70 animate-pulse pl-2">Computing...</div>}
+            {isTyping && <div className="text-[10px] text-cyan-500/70 animate-pulse pl-2">Analyzing sensors...</div>}
             <div ref={messagesEndRef} />
           </div>
           <form onSubmit={handleSend} className="p-3 bg-slate-950/50 border-t border-slate-800 flex gap-2">
-            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Enter command..." className="flex-1 bg-slate-900 text-white text-xs px-3 py-2 rounded-lg border border-slate-700 focus:border-cyan-500 outline-none transition-all" />
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Query system..." className="flex-1 bg-slate-900 text-white text-xs px-3 py-2 rounded-lg border border-slate-700 focus:border-cyan-500 outline-none transition-all" />
             <button type="submit" className="text-cyan-500 hover:text-white transition-colors"><Send size={16} /></button>
           </form>
         </div>
@@ -279,49 +301,78 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (MERGED: MAP + SENSORS + CONTACTS) ---
-function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
-  // 1. CONTACTS STATE (Persisted)
+// --- USER DASHBOARD (UPGRADED: FREE SMS + GOOGLE MAPS + TOGGLE) ---
+function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
+  // 1. STATE MANAGEMENT
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
     return saved ? JSON.parse(saved) : [];
   });
   
-  // 2. SENSOR STATE (Restored)
   const [activeTab, setActiveTab] = useState('defense'); 
   const [isSOSActive, setIsSOSActive] = useState(false);
+  const [showMap, setShowMap] = useState(false); // Map toggle state
   const [newContact, setNewContact] = useState({ name: '', phone: '' });
-  const [location, setLocation] = useState<[number, number]>([20.5937, 78.9629]); // Default India
-  const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0 });
+  const [location, setLocation] = useState<[number, number]>([20.5937, 78.9629]); 
+  
+  // Stats for the Bot and UI
+  const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
+  const [crashDetected, setCrashDetected] = useState(false);
 
-  // 3. EFFECT: SAVE CONTACTS
+  const CRASH_THRESHOLD = 2.5; 
+
+  // 2. SAVE CONTACTS EFFECT
   useEffect(() => {
     localStorage.setItem('rakshak_contacts', JSON.stringify(contacts));
   }, [contacts]);
 
-  // 4. EFFECT: GET REAL LOCATION & SENSORS
+  // 3. SOS & SMS LOGIC
+  const triggerSOS = () => {
+    if (isSOSActive) return; 
+    setIsSOSActive(true);
+    setCrashDetected(true);
+
+    const googleMapsLink = `http://maps.google.com/?q=${location[0]},${location[1]}`;
+    const alertMsg = `SOS! I've been in a CRASH! My Location: ${googleMapsLink}`;
+
+    // FREE SMS FALLBACK: Opens default SMS app
+    if (contacts.length > 0) {
+        const firstPhone = contacts[0].phone;
+        // Tries to open SMS app with body filled
+        window.open(`sms:${firstPhone}?body=${encodeURIComponent(alertMsg)}`, '_self');
+    }
+
+    // Play sound (optional)
+    // const audio = new Audio('/alarm.mp3'); audio.play().catch(console.error);
+  };
+
+  // 4. SENSOR MONITORING
   useEffect(() => {
-    // GPS Tracker
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        setLocation([pos.coords.latitude, pos.coords.longitude]);
+        const newLoc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setLocation(newLoc);
         setStats(prev => ({
           ...prev,
-          speed: pos.coords.speed ? (pos.coords.speed * 3.6) : 0, // Convert m/s to km/h
-          altitude: pos.coords.altitude || 0
+          speed: pos.coords.speed ? (pos.coords.speed * 3.6) : 0, 
+          altitude: pos.coords.altitude || 0,
+          location: newLoc
         }));
       },
       (err) => console.error(err),
       { enableHighAccuracy: true }
     );
 
-    // Accelerometer (G-Force)
     const handleMotion = (e: DeviceMotionEvent) => {
       if (e.accelerationIncludingGravity) {
         const { x, y, z } = e.accelerationIncludingGravity;
-        // Calculate total G-Force magnitude
         const g = Math.sqrt((x || 0)**2 + (y || 0)**2 + (z || 0)**2) / 9.8;
-        setStats(prev => ({ ...prev, gForce: parseFloat(g.toFixed(2)) }));
+        const currentG = parseFloat(g.toFixed(2));
+        setStats(prev => ({ ...prev, gForce: currentG }));
+
+        if (currentG > CRASH_THRESHOLD && !isSOSActive) {
+           triggerSOS();
+        }
       }
     };
     window.addEventListener('devicemotion', handleMotion);
@@ -330,9 +381,8 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
       navigator.geolocation.clearWatch(watchId);
       window.removeEventListener('devicemotion', handleMotion);
     };
-  }, []);
+  }, [isSOSActive, contacts]); // Re-run if these change
 
-  // Contact Handlers
   const handleAddContact = () => {
     if (newContact.name && newContact.phone) {
       setContacts([...contacts, { id: Date.now(), name: newContact.name, phone: newContact.phone }]);
@@ -342,92 +392,107 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
   const removeContact = (id: number) => setContacts(contacts.filter(c => c.id !== id));
 
   return (
-    <div className="min-h-screen bg-black text-gray-200 pb-20">
+    <div className="min-h-screen bg-black text-gray-200 pb-20 font-sans">
       {/* Header */}
-      <header className="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
+      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-40">
         <div className="flex justify-between items-center max-w-lg mx-auto">
           <div className="flex items-center gap-2">
             <Shield className="text-cyan-500 w-6 h-6" />
-            <span className="font-bold text-lg tracking-wider">RAKSHAK</span>
+            <span className="font-bold text-lg tracking-wider text-white">RAKSHAK</span>
           </div>
-          <Button variant="ghost" size="icon" onClick={onLogout} className="text-slate-400">
+          <Button variant="ghost" size="icon" onClick={onLogout} className="text-slate-400 hover:text-white">
             <LogOut size={20} />
           </Button>
         </div>
       </header>
 
       <main className="max-w-lg mx-auto p-4 space-y-6">
-        
         {/* TABS */}
         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
-          <button 
-            onClick={() => setActiveTab('defense')}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'defense' ? 'bg-cyan-950 text-cyan-400' : 'text-slate-500'}`}
-          >
-            DEFENSE PROTOCOL
-          </button>
-          <button 
-            onClick={() => setActiveTab('contacts')}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'contacts' ? 'bg-cyan-950 text-cyan-400' : 'text-slate-500'}`}
-          >
-            CONTACTS
-          </button>
+          <button onClick={() => setActiveTab('defense')} className={`flex-1 py-2 rounded-lg text-xs font-bold tracking-widest transition-all ${activeTab === 'defense' ? 'bg-cyan-950 text-cyan-400 border border-cyan-900/50' : 'text-slate-500'}`}>DEFENSE</button>
+          <button onClick={() => setActiveTab('contacts')} className={`flex-1 py-2 rounded-lg text-xs font-bold tracking-widest transition-all ${activeTab === 'contacts' ? 'bg-cyan-950 text-cyan-400 border border-cyan-900/50' : 'text-slate-500'}`}>CONTACTS</button>
         </div>
 
-        {/* --- VIEW 1: DEFENSE (Map + Sensors + SOS) --- */}
         {activeTab === 'defense' && (
           <div className="space-y-4">
-            
-            {/* LIVE SENSOR DASHBOARD (Restored) */}
+            {/* SENSORS */}
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-center">
-                <div className="text-xs text-slate-500 font-bold">SPEED</div>
-                <div className="text-xl font-mono text-cyan-400">{stats.speed.toFixed(0)} <span className="text-xs">km/h</span></div>
+              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center">
+                <Activity size={14} className="text-cyan-600 mb-1" />
+                <div className="text-[10px] text-slate-500 font-bold tracking-widest">SPEED</div>
+                <div className="text-xl font-mono text-cyan-400">{stats.speed.toFixed(0)}</div>
               </div>
-              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-center">
-                <div className="text-xs text-slate-500 font-bold">G-FORCE</div>
-                <div className={`text-xl font-mono ${stats.gForce > 2 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
-                  {stats.gForce}g
-                </div>
+              <div className={`p-3 rounded-xl border text-center flex flex-col items-center transition-all ${stats.gForce > 2 ? 'bg-red-950/30 border-red-500/50 animate-pulse' : 'bg-slate-900/50 border-slate-800'}`}>
+                <Zap size={14} className={`${stats.gForce > 2 ? 'text-red-500' : 'text-yellow-600'} mb-1`} />
+                <div className="text-[10px] text-slate-500 font-bold tracking-widest">G-FORCE</div>
+                <div className={`text-xl font-mono ${stats.gForce > 2 ? 'text-red-500' : 'text-white'}`}>{stats.gForce}g</div>
               </div>
-              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-center">
-                <div className="text-xs text-slate-500 font-bold">ALTITUDE</div>
+              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center">
+                <Radio size={14} className="text-purple-600 mb-1" />
+                <div className="text-[10px] text-slate-500 font-bold tracking-widest">ALTITUDE</div>
                 <div className="text-xl font-mono text-purple-400">{stats.altitude.toFixed(0)}m</div>
               </div>
             </div>
 
-            {/* MAP (Restored) */}
-            <div className="h-64 rounded-2xl overflow-hidden border border-slate-700 relative z-0">
-               {/* @ts-ignore */}
-               <MapContainer center={location} zoom={15} style={{ height: "100%", width: "100%" }}>
-                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                 {/* @ts-ignore */}
-                 <Marker position={location} icon={new Icon({iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png', iconSize: [25, 41], iconAnchor: [12, 41]})}>
-                   <Popup>Your Live Location</Popup>
-                 </Marker>
-               </MapContainer>
-            </div>
+            {/* MAP TOGGLE BUTTON (NEW) */}
+            <button 
+              onClick={() => setShowMap(!showMap)}
+              className="w-full py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-400 hover:border-cyan-900/50 transition-all flex items-center justify-center gap-2 text-sm font-bold"
+            >
+              <Globe size={18} />
+              {showMap ? "CLOSE SATELLITE FEED" : "VIEW LIVE LOCATION"}
+            </button>
+
+            {/* GOOGLE MAPS SATELLITE VIEW */}
+            <AnimatePresence>
+                {showMap && (
+                    <motion.div 
+                        initial={{ height: 0, opacity: 0 }} 
+                        animate={{ height: 300, opacity: 1 }} 
+                        exit={{ height: 0, opacity: 0 }}
+                        className="rounded-2xl overflow-hidden border border-slate-700 relative shadow-2xl"
+                    >
+                        {/* @ts-ignore */}
+                        <MapContainer center={location} zoom={18} style={{ height: "100%", width: "100%" }}>
+                            <TileLayer 
+                                url="http://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+                                subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
+                                attribution='© Google Maps'
+                            />
+                            {/* @ts-ignore */}
+                            <Marker position={location} icon={new Icon({iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png', iconSize: [25, 41], iconAnchor: [12, 41]})}>
+                                <Popup>Your Live Location</Popup>
+                            </Marker>
+                        </MapContainer>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* SOS BUTTON */}
             <div className="flex flex-col items-center justify-center py-4">
               <button
-                onClick={() => setIsSOSActive(!isSOSActive)}
-                className={`relative group w-40 h-40 rounded-full flex items-center justify-center transition-all duration-300 ${isSOSActive ? 'bg-red-500 shadow-[0_0_50px_rgba(239,68,68,0.6)]' : 'bg-slate-800 hover:bg-red-900/30 border-4 border-slate-700 hover:border-red-500/50'}`}
+                onClick={triggerSOS}
+                className={`relative group w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 ${isSOSActive ? 'bg-red-600 shadow-[0_0_80px_rgba(220,38,38,0.6)] scale-105' : 'bg-slate-800 hover:bg-red-900/30 border-4 border-slate-700 hover:border-red-500/50'}`}
               >
-                <div className={`absolute inset-0 rounded-full border-2 border-dashed border-white/20 animate-[spin_10s_linear_infinite] ${isSOSActive ? 'opacity-100' : 'opacity-0'}`} />
-                <div className="flex flex-col items-center">
-                  <AlertTriangle size={32} className={`mb-1 ${isSOSActive ? 'text-white animate-bounce' : 'text-red-500'}`} />
-                  <span className={`text-xl font-black tracking-widest ${isSOSActive ? 'text-white' : 'text-red-500'}`}>SOS</span>
+                {isSOSActive && <div className="absolute inset-0 rounded-full border border-red-500 animate-ping opacity-75"></div>}
+                
+                <div className="flex flex-col items-center z-10">
+                  <AlertTriangle size={48} className={`mb-1 ${isSOSActive ? 'text-white animate-bounce' : 'text-red-500'}`} />
+                  <span className={`text-2xl font-black tracking-widest ${isSOSActive ? 'text-white' : 'text-red-500'}`}>SOS</span>
                 </div>
               </button>
-              <p className="mt-4 text-slate-500 text-xs font-mono text-center">
-                {isSOSActive ? "TRANSMITTING DISTRESS SIGNAL..." : "TAP TO ACTIVATE EMERGENCY BEACON"}
-              </p>
+              
+              {crashDetected && (
+                 <div className="mt-6 bg-red-950/50 border border-red-500/30 text-red-200 px-6 py-3 rounded-lg text-sm font-bold animate-pulse text-center flex flex-col items-center gap-1">
+                    <span className="flex items-center gap-2"><AlertTriangle size={16}/> CRASH DETECTED</span>
+                    <span className="text-xs font-normal opacity-70">Opening SMS to alert {contacts.length} Guardians...</span>
+                 </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* --- VIEW 2: CONTACTS (Kept Safe) --- */}
+        {/* --- VIEW 2: CONTACTS --- */}
         {activeTab === 'contacts' && (
           <div className="space-y-6">
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4">
@@ -478,8 +543,8 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
         )}
       </main>
 
-      {/* Helper Bot */}
-      <RakshakBot />
+      {/* Helper Bot (Now Context Aware) */}
+      <RakshakBot stats={stats} user={user} />
     </div>
   );
 }
