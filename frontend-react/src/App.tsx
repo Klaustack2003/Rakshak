@@ -9,7 +9,8 @@ import {
   AlertTriangle, Shield, Zap, 
   Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2
 } from 'lucide-react';
-
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { Icon } from 'leaflet'; 
 // --- VISUAL COMPONENTS ---
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
@@ -21,6 +22,7 @@ import { FAQ } from '@/components/landing/FAQ';
 import { CTA } from '@/components/landing/CTA';
 import { Footer } from '@/components/landing/Footer';
 import { Input } from './components/ui/input';
+import { Button } from './components/ui/button';
 
 // --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
@@ -277,33 +279,67 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (WITH CONTACTS) ---
+// --- USER DASHBOARD (MERGED: MAP + SENSORS + CONTACTS) ---
 function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
-  // We use LocalStorage so contacts survive a refresh!
+  // 1. CONTACTS STATE (Persisted)
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
     return saved ? JSON.parse(saved) : [];
   });
   
-  const [activeTab, setActiveTab] = useState('defense'); // 'defense' or 'contacts'
+  // 2. SENSOR STATE (Restored)
+  const [activeTab, setActiveTab] = useState('defense'); 
   const [isSOSActive, setIsSOSActive] = useState(false);
   const [newContact, setNewContact] = useState({ name: '', phone: '' });
+  const [location, setLocation] = useState<[number, number]>([20.5937, 78.9629]); // Default India
+  const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0 });
 
-  // Save to LocalStorage whenever contacts change
+  // 3. EFFECT: SAVE CONTACTS
   useEffect(() => {
     localStorage.setItem('rakshak_contacts', JSON.stringify(contacts));
   }, [contacts]);
 
+  // 4. EFFECT: GET REAL LOCATION & SENSORS
+  useEffect(() => {
+    // GPS Tracker
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setLocation([pos.coords.latitude, pos.coords.longitude]);
+        setStats(prev => ({
+          ...prev,
+          speed: pos.coords.speed ? (pos.coords.speed * 3.6) : 0, // Convert m/s to km/h
+          altitude: pos.coords.altitude || 0
+        }));
+      },
+      (err) => console.error(err),
+      { enableHighAccuracy: true }
+    );
+
+    // Accelerometer (G-Force)
+    const handleMotion = (e: DeviceMotionEvent) => {
+      if (e.accelerationIncludingGravity) {
+        const { x, y, z } = e.accelerationIncludingGravity;
+        // Calculate total G-Force magnitude
+        const g = Math.sqrt((x || 0)**2 + (y || 0)**2 + (z || 0)**2) / 9.8;
+        setStats(prev => ({ ...prev, gForce: parseFloat(g.toFixed(2)) }));
+      }
+    };
+    window.addEventListener('devicemotion', handleMotion);
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      window.removeEventListener('devicemotion', handleMotion);
+    };
+  }, []);
+
+  // Contact Handlers
   const handleAddContact = () => {
     if (newContact.name && newContact.phone) {
       setContacts([...contacts, { id: Date.now(), name: newContact.name, phone: newContact.phone }]);
-      setNewContact({ name: '', phone: '' }); // Clear form
+      setNewContact({ name: '', phone: '' });
     }
   };
-
-  const removeContact = (id: number) => {
-    setContacts(contacts.filter(c => c.id !== id));
-  };
+  const removeContact = (id: number) => setContacts(contacts.filter(c => c.id !== id));
 
   return (
     <div className="min-h-screen bg-black text-gray-200 pb-20">
@@ -314,21 +350,21 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
             <Shield className="text-cyan-500 w-6 h-6" />
             <span className="font-bold text-lg tracking-wider">RAKSHAK</span>
           </div>
-          <button onClick={onLogout} className="text-slate-400 hover:text-white transition-colors p-2">
+          <Button variant="ghost" size="icon" onClick={onLogout} className="text-slate-400">
             <LogOut size={20} />
-          </button>
+          </Button>
         </div>
       </header>
 
       <main className="max-w-lg mx-auto p-4 space-y-6">
         
-        {/* TABS (Defense vs Contacts) */}
+        {/* TABS */}
         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
           <button 
             onClick={() => setActiveTab('defense')}
             className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'defense' ? 'bg-cyan-950 text-cyan-400' : 'text-slate-500'}`}
           >
-            DEFENSE
+            DEFENSE PROTOCOL
           </button>
           <button 
             onClick={() => setActiveTab('contacts')}
@@ -338,100 +374,111 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
           </button>
         </div>
 
-        {/* --- VIEW 1: DEFENSE PROTOCOL (Original SOS Screen) --- */}
+        {/* --- VIEW 1: DEFENSE (Map + Sensors + SOS) --- */}
         {activeTab === 'defense' && (
-          <div className="space-y-6">
-            {/* Status Card */}
-            <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-sm font-mono text-slate-400">SYSTEM ONLINE</span>
+          <div className="space-y-4">
+            
+            {/* LIVE SENSOR DASHBOARD (Restored) */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-center">
+                <div className="text-xs text-slate-500 font-bold">SPEED</div>
+                <div className="text-xl font-mono text-cyan-400">{stats.speed.toFixed(0)} <span className="text-xs">km/h</span></div>
               </div>
-              <div className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">
-                GPS: ACCURATE
+              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-center">
+                <div className="text-xs text-slate-500 font-bold">G-FORCE</div>
+                <div className={`text-xl font-mono ${stats.gForce > 2 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
+                  {stats.gForce}g
+                </div>
+              </div>
+              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-center">
+                <div className="text-xs text-slate-500 font-bold">ALTITUDE</div>
+                <div className="text-xl font-mono text-purple-400">{stats.altitude.toFixed(0)}m</div>
               </div>
             </div>
 
-            {/* THE BIG RED BUTTON */}
-            <div className="flex flex-col items-center justify-center py-8">
+            {/* MAP (Restored) */}
+            <div className="h-64 rounded-2xl overflow-hidden border border-slate-700 relative z-0">
+               {/* @ts-ignore */}
+               <MapContainer center={location} zoom={15} style={{ height: "100%", width: "100%" }}>
+                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                 {/* @ts-ignore */}
+                 <Marker position={location} icon={new Icon({iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png', iconSize: [25, 41], iconAnchor: [12, 41]})}>
+                   <Popup>Your Live Location</Popup>
+                 </Marker>
+               </MapContainer>
+            </div>
+
+            {/* SOS BUTTON */}
+            <div className="flex flex-col items-center justify-center py-4">
               <button
                 onClick={() => setIsSOSActive(!isSOSActive)}
-                className={`relative group w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 ${isSOSActive ? 'bg-red-500 shadow-[0_0_50px_rgba(239,68,68,0.6)]' : 'bg-slate-800 hover:bg-red-900/30 border-4 border-slate-700 hover:border-red-500/50'}`}
+                className={`relative group w-40 h-40 rounded-full flex items-center justify-center transition-all duration-300 ${isSOSActive ? 'bg-red-500 shadow-[0_0_50px_rgba(239,68,68,0.6)]' : 'bg-slate-800 hover:bg-red-900/30 border-4 border-slate-700 hover:border-red-500/50'}`}
               >
                 <div className={`absolute inset-0 rounded-full border-2 border-dashed border-white/20 animate-[spin_10s_linear_infinite] ${isSOSActive ? 'opacity-100' : 'opacity-0'}`} />
                 <div className="flex flex-col items-center">
-                  <AlertTriangle size={40} className={`mb-2 ${isSOSActive ? 'text-white animate-bounce' : 'text-red-500'}`} />
-                  <span className={`text-2xl font-black tracking-widest ${isSOSActive ? 'text-white' : 'text-red-500'}`}>SOS</span>
+                  <AlertTriangle size={32} className={`mb-1 ${isSOSActive ? 'text-white animate-bounce' : 'text-red-500'}`} />
+                  <span className={`text-xl font-black tracking-widest ${isSOSActive ? 'text-white' : 'text-red-500'}`}>SOS</span>
                 </div>
               </button>
-              <p className="mt-6 text-slate-500 text-sm font-mono text-center">
-                PRESS TO ACTIVATE <br/> EMERGENCY PROTOCOL
+              <p className="mt-4 text-slate-500 text-xs font-mono text-center">
+                {isSOSActive ? "TRANSMITTING DISTRESS SIGNAL..." : "TAP TO ACTIVATE EMERGENCY BEACON"}
               </p>
             </div>
           </div>
         )}
 
-        {/* --- VIEW 2: MANAGE CONTACTS (New Feature) --- */}
+        {/* --- VIEW 2: CONTACTS (Kept Safe) --- */}
         {activeTab === 'contacts' && (
           <div className="space-y-6">
-            {/* Add Contact Form */}
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4">
                <h3 className="text-cyan-400 text-sm font-bold uppercase tracking-wider flex items-center gap-2">
                  <UserPlus size={16} /> Add Guardian
                </h3>
                <div className="space-y-2">
                  <Input 
-                   placeholder="Guardian Name (e.g. Dad)" 
+                   placeholder="Guardian Name" 
                    className="bg-slate-950 border-slate-800 text-white"
                    value={newContact.name}
                    onChange={(e) => setNewContact({...newContact, name: e.target.value})}
                  />
                  <Input 
-                   placeholder="Phone Number / Telegram ID" 
+                   placeholder="Phone Number" 
                    className="bg-slate-950 border-slate-800 text-white"
                    value={newContact.phone}
                    onChange={(e) => setNewContact({...newContact, phone: e.target.value})}
                  />
-                 <button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 rounded-lg transition-all">
+                 <Button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold">
                    SAVE CONTACT
-                 </button>
+                 </Button>
                </div>
             </div>
 
-            {/* List of Contacts */}
             <div className="space-y-3">
               <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider pl-1">
                 Your Trusted Network ({contacts.length})
               </h3>
-              
-              {contacts.length === 0 ? (
-                <div className="text-center py-8 text-slate-600 italic">
-                  No contacts added yet.<br/>Add someone to alert in case of emergency.
-                </div>
-              ) : (
-                contacts.map((contact) => (
-                  <div key={contact.id} className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-cyan-950 flex items-center justify-center text-cyan-400">
-                        <User size={20} />
-                      </div>
-                      <div>
-                        <div className="font-bold text-white">{contact.name}</div>
-                        <div className="text-xs text-slate-400">{contact.phone}</div>
-                      </div>
+              {contacts.map((contact) => (
+                <div key={contact.id} className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-cyan-950 flex items-center justify-center text-cyan-400">
+                      <User size={20} />
                     </div>
-                    <button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors">
-                      <Trash2 size={18} />
-                    </button>
+                    <div>
+                      <div className="font-bold text-white">{contact.name}</div>
+                      <div className="text-xs text-slate-400">{contact.phone}</div>
+                    </div>
                   </div>
-                ))
-              )}
+                  <button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}
       </main>
 
-      {/* Helper Bot (Stays visible on both tabs) */}
+      {/* Helper Bot */}
       <RakshakBot />
     </div>
   );
