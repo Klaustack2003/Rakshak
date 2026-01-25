@@ -9,12 +9,13 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio // Added Globe, Activity, Radio
+  Globe, Activity, Radio, PhoneCall
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react'; // Ensure you have this installed, or use 'framer-motion'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { motion, AnimatePresence } from 'motion/react'; 
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Icon } from 'leaflet'; 
 import 'leaflet/dist/leaflet.css';
+// import emailjs from '@emailjs/browser'; // Uncomment if using EmailJS
 
 // --- VISUAL COMPONENTS ---
 import { Header } from '@/components/landing/Header';
@@ -29,7 +30,7 @@ import { Footer } from '@/components/landing/Footer';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 
-// --- FIREBASE CONFIGURATION ---
+// --- FIREBASE CONFIG (Replace with YOUR REAL KEYS) ---
 const firebaseConfig = {
   apiKey: "AIzaSyAuozu4A_9OtGusVCO_pyDt8o8mKl0h3ig",
   authDomain: "rakshak-89deb.firebaseapp.com",
@@ -48,9 +49,7 @@ try {
     console.error("Firebase Init Error:", e);
 }
 
-// --- CONFIG ---
 const API_URL = "https://rakshak-api-sovy.onrender.com";
-
 
 // --- ERROR BOUNDARY ---
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
@@ -75,7 +74,16 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-// --- SMART RAKSHAK BOT (CONTEXT AWARE) ---
+// --- HELPER TO FORCE MAP TO FOLLOW USER ---
+function RecenterMap({ location }: { location: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(location, map.getZoom());
+  }, [location]);
+  return null;
+}
+
+// --- SMART RAKSHAK BOT ---
 function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([{ sender: 'bot', text: 'Rakshak Neural Link Established. Ready.' }]);
@@ -97,7 +105,6 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
       let reply = "Processing data...";
       const lower = userText.toLowerCase();
       
-      // Context Aware Responses
       if (lower.includes('status') || lower.includes('report')) {
         if (stats) {
             reply = `SYSTEM NOMINAL.\nSpeed: ${stats.speed?.toFixed(1) || 0} km/h\nG-Force: ${stats.gForce || 1}g\nAltitude: ${stats.altitude?.toFixed(0) || 0}m`;
@@ -112,7 +119,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
              reply = "GPS Signal Lost.";
          }
       }
-      else if (lower.includes('sos') || lower.includes('help')) reply = "Press the RED BUTTON to trigger emergency protocols and alert your contacts via SMS.";
+      else if (lower.includes('sos') || lower.includes('help')) reply = "Press the RED BUTTON to trigger emergency protocols. This will Auto-Dial your main contact and open WhatsApp with your coordinates.";
       else if (lower.includes('hi') || lower.includes('hello')) reply = `Greetings ${user?.email ? user.email.split('@')[0] : 'Operator'}. Rakshak systems operational.`;
       else reply = "Command not recognized. Try 'Status', 'Location', or 'Help'.";
 
@@ -301,52 +308,73 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (UPGRADED: FREE SMS + GOOGLE MAPS + TOGGLE) ---
-function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
-  // 1. STATE MANAGEMENT
-  const [contacts, setContacts] = useState<{id: number, name: string, phone: string}[]>(() => {
+// --- USER DASHBOARD (AUTO-DIALER + WHATSAPP + OPTIONAL EMAIL) ---
+function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
+  // STATE
+  const [contacts, setContacts] = useState<{id: number, name: string, phone: string, email?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
     return saved ? JSON.parse(saved) : [];
   });
   
   const [activeTab, setActiveTab] = useState('defense'); 
   const [isSOSActive, setIsSOSActive] = useState(false);
-  const [showMap, setShowMap] = useState(false); // Map toggle state
-  const [newContact, setNewContact] = useState({ name: '', phone: '' });
+  const [showMap, setShowMap] = useState(false);
+  const [newContact, setNewContact] = useState({ name: '', phone: '', email: '' });
   const [location, setLocation] = useState<[number, number]>([20.5937, 78.9629]); 
   
-  // Stats for the Bot and UI
   const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
-  const [crashDetected, setCrashDetected] = useState(false);
+  const [, setCrashDetected] = useState(false);
+  const [statusLog, setStatusLog] = useState<string>("");
 
   const CRASH_THRESHOLD = 2.5; 
 
-  // 2. SAVE CONTACTS EFFECT
   useEffect(() => {
     localStorage.setItem('rakshak_contacts', JSON.stringify(contacts));
   }, [contacts]);
 
-  // 3. SOS & SMS LOGIC
-  const triggerSOS = () => {
+  // --- AUTOMATIC ALERT SYSTEM (DIRECT CALL + WHATSAPP) ---
+  const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
     setCrashDetected(true);
+    setStatusLog("CRASH DETECTED! INITIATING DIRECT UPLINK...");
 
-    const googleMapsLink = `http://maps.google.com/?q=${location[0]},${location[1]}`;
-    const alertMsg = `SOS! I've been in a CRASH! My Location: ${googleMapsLink}`;
+    const googleMapsLink = `http://googleusercontent.com/maps.google.com/3{location[0]},${location[1]}`;
+    const alertMsg = `🚨 SOS ALERT! 🚨\n\nI have detected a CRASH.\nSpeed: ${stats.speed.toFixed(0)} km/h\nG-Force: ${stats.gForce}g\n\n📍 LIVE LOCATION:\n${googleMapsLink}`;
 
-    // FREE SMS FALLBACK: Opens default SMS app
     if (contacts.length > 0) {
-        const firstPhone = contacts[0].phone;
-        // Tries to open SMS app with body filled
-        window.open(`sms:${firstPhone}?body=${encodeURIComponent(alertMsg)}`, '_self');
-    }
+      const primaryContact = contacts[0];
+      const cleanPhone = primaryContact.phone.replace(/\D/g, ''); // Digits only
 
-    // Play sound (optional)
-    // const audio = new Audio('/alarm.mp3'); audio.play().catch(console.error);
+      // 1. AUTO-DIALER (Immediate Phone Call)
+      // This is the most effective "Real-time" alert
+      setStatusLog(`📞 Initiating Emergency Call to ${primaryContact.name}...`);
+      window.open(`tel:${cleanPhone}`, '_self');
+
+      // 2. WHATSAPP DIRECT LINK (Opens in new tab after 1 second)
+      setTimeout(() => {
+          setStatusLog(`💬 Opening WhatsApp Link...`);
+          window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(alertMsg)}`, '_blank');
+      }, 1500);
+
+      // 3. (OPTIONAL) EMAILJS - TRUE AUTOMATIC BACKGROUND ALERT
+      // If you sign up for EmailJS (free), uncomment this block to send silent emails.
+      /*
+      if (primaryContact.email) {
+          emailjs.send('YOUR_SERVICE_ID', 'YOUR_TEMPLATE_ID', {
+              to_name: primaryContact.name,
+              to_email: primaryContact.email,
+              message: alertMsg,
+              location_link: googleMapsLink
+          }, 'YOUR_PUBLIC_KEY');
+      }
+      */
+      
+    } else {
+        setStatusLog("⚠️ NO CONTACTS! ADD A GUARDIAN IMMEDIATELY.");
+    }
   };
 
-  // 4. SENSOR MONITORING
   useEffect(() => {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -360,7 +388,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
         }));
       },
       (err) => console.error(err),
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
     );
 
     const handleMotion = (e: DeviceMotionEvent) => {
@@ -381,19 +409,23 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
       navigator.geolocation.clearWatch(watchId);
       window.removeEventListener('devicemotion', handleMotion);
     };
-  }, [isSOSActive, contacts]); // Re-run if these change
+  }, [isSOSActive, contacts]); 
 
   const handleAddContact = () => {
     if (newContact.name && newContact.phone) {
-      setContacts([...contacts, { id: Date.now(), name: newContact.name, phone: newContact.phone }]);
-      setNewContact({ name: '', phone: '' });
+      setContacts([...contacts, { 
+          id: Date.now(), 
+          name: newContact.name, 
+          phone: newContact.phone,
+          email: newContact.email
+      }]);
+      setNewContact({ name: '', phone: '', email: '' });
     }
   };
   const removeContact = (id: number) => setContacts(contacts.filter(c => c.id !== id));
 
   return (
     <div className="min-h-screen bg-black text-gray-200 pb-20 font-sans">
-      {/* Header */}
       <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-40">
         <div className="flex justify-between items-center max-w-lg mx-auto">
           <div className="flex items-center gap-2">
@@ -407,7 +439,6 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
       </header>
 
       <main className="max-w-lg mx-auto p-4 space-y-6">
-        {/* TABS */}
         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
           <button onClick={() => setActiveTab('defense')} className={`flex-1 py-2 rounded-lg text-xs font-bold tracking-widest transition-all ${activeTab === 'defense' ? 'bg-cyan-950 text-cyan-400 border border-cyan-900/50' : 'text-slate-500'}`}>DEFENSE</button>
           <button onClick={() => setActiveTab('contacts')} className={`flex-1 py-2 rounded-lg text-xs font-bold tracking-widest transition-all ${activeTab === 'contacts' ? 'bg-cyan-950 text-cyan-400 border border-cyan-900/50' : 'text-slate-500'}`}>CONTACTS</button>
@@ -415,7 +446,6 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
 
         {activeTab === 'defense' && (
           <div className="space-y-4">
-            {/* SENSORS */}
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center">
                 <Activity size={14} className="text-cyan-600 mb-1" />
@@ -434,7 +464,6 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
               </div>
             </div>
 
-            {/* MAP TOGGLE BUTTON (NEW) */}
             <button 
               onClick={() => setShowMap(!showMap)}
               className="w-full py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-400 hover:border-cyan-900/50 transition-all flex items-center justify-center gap-2 text-sm font-bold"
@@ -443,7 +472,6 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
               {showMap ? "CLOSE SATELLITE FEED" : "VIEW LIVE LOCATION"}
             </button>
 
-            {/* GOOGLE MAPS SATELLITE VIEW */}
             <AnimatePresence>
                 {showMap && (
                     <motion.div 
@@ -454,6 +482,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
                     >
                         {/* @ts-ignore */}
                         <MapContainer center={location} zoom={18} style={{ height: "100%", width: "100%" }}>
+                            <RecenterMap location={location} /> 
                             <TileLayer 
                                 url="http://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
                                 subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
@@ -461,38 +490,39 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
                             />
                             {/* @ts-ignore */}
                             <Marker position={location} icon={new Icon({iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png', iconSize: [25, 41], iconAnchor: [12, 41]})}>
-                                <Popup>Your Live Location</Popup>
+                                <Popup>You are Here</Popup>
                             </Marker>
                         </MapContainer>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* SOS BUTTON */}
             <div className="flex flex-col items-center justify-center py-4">
               <button
                 onClick={triggerSOS}
                 className={`relative group w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 ${isSOSActive ? 'bg-red-600 shadow-[0_0_80px_rgba(220,38,38,0.6)] scale-105' : 'bg-slate-800 hover:bg-red-900/30 border-4 border-slate-700 hover:border-red-500/50'}`}
               >
                 {isSOSActive && <div className="absolute inset-0 rounded-full border border-red-500 animate-ping opacity-75"></div>}
-                
                 <div className="flex flex-col items-center z-10">
                   <AlertTriangle size={48} className={`mb-1 ${isSOSActive ? 'text-white animate-bounce' : 'text-red-500'}`} />
                   <span className={`text-2xl font-black tracking-widest ${isSOSActive ? 'text-white' : 'text-red-500'}`}>SOS</span>
                 </div>
               </button>
               
-              {crashDetected && (
-                 <div className="mt-6 bg-red-950/50 border border-red-500/30 text-red-200 px-6 py-3 rounded-lg text-sm font-bold animate-pulse text-center flex flex-col items-center gap-1">
-                    <span className="flex items-center gap-2"><AlertTriangle size={16}/> CRASH DETECTED</span>
-                    <span className="text-xs font-normal opacity-70">Opening SMS to alert {contacts.length} Guardians...</span>
+              {statusLog && (
+                 <div className="mt-6 w-full bg-slate-900 border border-slate-700 p-4 rounded-xl">
+                    <div className="flex items-center gap-2 mb-2 text-cyan-400 text-xs font-bold uppercase tracking-wider">
+                        <Activity size={12} className="animate-pulse"/> System Log
+                    </div>
+                    <div className="font-mono text-xs text-slate-300 whitespace-pre-line">
+                        {statusLog}
+                    </div>
                  </div>
               )}
             </div>
           </div>
         )}
 
-        {/* --- VIEW 2: CONTACTS --- */}
         {activeTab === 'contacts' && (
           <div className="space-y-6">
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4">
@@ -501,16 +531,22 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
                </h3>
                <div className="space-y-2">
                  <Input 
-                   placeholder="Guardian Name" 
+                   placeholder="Name" 
                    className="bg-slate-950 border-slate-800 text-white"
                    value={newContact.name}
                    onChange={(e) => setNewContact({...newContact, name: e.target.value})}
                  />
                  <Input 
-                   placeholder="Phone Number" 
+                   placeholder="Phone Number (Required for Call)" 
                    className="bg-slate-950 border-slate-800 text-white"
                    value={newContact.phone}
                    onChange={(e) => setNewContact({...newContact, phone: e.target.value})}
+                 />
+                 <Input 
+                   placeholder="Email (Optional for Email Alerts)" 
+                   className="bg-slate-950 border-slate-800 text-white"
+                   value={newContact.email}
+                   onChange={(e) => setNewContact({...newContact, email: e.target.value})}
                  />
                  <Button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold">
                    SAVE CONTACT
@@ -531,11 +567,17 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
                     <div>
                       <div className="font-bold text-white">{contact.name}</div>
                       <div className="text-xs text-slate-400">{contact.phone}</div>
+                      {contact.email && <div className="text-[10px] text-zinc-500">{contact.email}</div>}
                     </div>
                   </div>
-                  <button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors">
-                    <Trash2 size={18} />
-                  </button>
+                  <div className="flex gap-2">
+                      <button onClick={() => window.open(`tel:${contact.phone}`)} className="text-green-500 hover:bg-green-950/30 p-2 rounded-lg transition-colors">
+                        <PhoneCall size={18} />
+                      </button>
+                      <button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors">
+                        <Trash2 size={18} />
+                      </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -543,8 +585,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
         )}
       </main>
 
-      {/* Helper Bot (Now Context Aware) */}
-      <RakshakBot stats={stats} user={user} />
+      <RakshakBot />
     </div>
   );
 }
@@ -571,7 +612,7 @@ function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
 // --- MAIN APP (PERSISTENT LOGIN FIX) ---
 function App() {
   const [view, setView] = useState('landing'); 
-  const [user, setUser] = useState<any>(null); // Changed type to 'any' to handle the Commander object
+  const [user, setUser] = useState<any>(null); 
   const [isAuthChecking, setIsAuthChecking] = useState(true); 
 
   useEffect(() => {
@@ -580,23 +621,19 @@ function App() {
       const localRole = localStorage.getItem('rakshak_role');
       
       if (localRole === 'admin') {
-        // Manually restore the Commander session
         setUser({ email: "COMMANDER", uid: "admin-local" });
         setView('admin');
         setIsAuthChecking(false);
-        return; // Stop here, we are done
+        return; 
       }
 
-      // 2. CHECK FOR FIREBASE USERS (Regular People)
+      // 2. CHECK FOR FIREBASE USERS
       const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         if (currentUser) {
           setUser(currentUser);
           setView('user');
         } else {
-          // Only go to landing if we aren't already an admin
-          if (localRole !== 'admin') {
-            setView('landing');
-          }
+          if (localRole !== 'admin') setView('landing');
         }
         setIsAuthChecking(false);
       });
@@ -606,18 +643,14 @@ function App() {
     checkLogin();
   }, []);
 
-  // UPDATED: Save to Local Storage when logging in
   const handleAuthSuccess = (role: string, userData: any) => { 
-    if (role === 'admin') {
-      localStorage.setItem('rakshak_role', 'admin');
-    }
+    if (role === 'admin') localStorage.setItem('rakshak_role', 'admin');
     setUser(userData); 
     setView(role); 
   };
 
-  // UPDATED: Clear Local Storage when logging out
   const handleLogout = async () => { 
-    localStorage.removeItem('rakshak_role'); // Forget the commander
+    localStorage.removeItem('rakshak_role'); 
     if(auth) await signOut(auth); 
     setUser(null); 
     setView('landing'); 
