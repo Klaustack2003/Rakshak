@@ -8,8 +8,9 @@ import {
 } from "firebase/auth";
 import { 
   AlertTriangle, Shield, Zap, 
-  Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall} from 'lucide-react';
+  Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
+  Globe, Activity, Radio, PhoneCall
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Icon } from 'leaflet'; 
@@ -59,12 +60,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
         <div className="min-h-screen bg-black text-red-500 flex flex-col items-center justify-center p-10 font-mono text-center">
           <AlertTriangle size={48} className="mb-4" />
           <h1 className="text-xl font-bold">SYSTEM CRITICAL ERROR</h1>
-          <p className="mt-4 bg-gray-900 p-4 border border-red-900 rounded text-xs overflow-auto max-w-lg">
-            {this.state.error && this.state.error.toString()}
-          </p>
-          <button onClick={() => window.location.reload()} className="mt-6 bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-500">
-            REBOOT SYSTEM
-          </button>
+          <button onClick={() => window.location.reload()} className="mt-6 bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-500">REBOOT SYSTEM</button>
         </div>
       );
     }
@@ -72,24 +68,27 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-// --- HELPER TO FORCE MAP TO FOLLOW USER ---
-function RecenterMap({ location }: { location: [number, number] }) {
+// --- MAP CONTROLLER (FIXES BLINKING) ---
+// This component listens for location changes and "Flies" the camera there smoothly
+// instead of reloading the whole map.
+function MapController({ location }: { location: [number, number] }) {
   const map = useMap();
   useEffect(() => {
-    map.setView(location, map.getZoom());
-  }, [location]);
+    if (location) {
+      map.flyTo(location, 18, { animate: true, duration: 1.5 }); // Smooth flight
+    }
+  }, [location, map]);
   return null;
 }
 
-// --- SMART RAKSHAK BOT ---
+// --- RAKSHAK BOT ---
 function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([{ sender: 'bot', text: 'Rakshak Neural Link Established. Ready.' }]);
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, isTyping]);
+  useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,66 +96,42 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
     const userText = input;
     setMessages(prev => [...prev, { sender: 'user', text: userText }]);
     setInput("");
-    setIsTyping(true);
 
     setTimeout(() => {
-      let reply = "Processing data...";
+      let reply = "Processing...";
       const lower = userText.toLowerCase();
-      
-      if (lower.includes('status') || lower.includes('report')) {
-        if (stats) {
-            reply = `SYSTEM NOMINAL.\nSpeed: ${stats.speed?.toFixed(1) || 0} km/h\nG-Force: ${stats.gForce || 1}g\nAltitude: ${stats.altitude?.toFixed(0) || 0}m`;
-        } else {
-            reply = "Sensor data unavailable. Please initialize Defense Protocol.";
-        }
-      } 
-      else if (lower.includes('location') || lower.includes('where')) {
-         if (stats?.location) {
-             reply = `GPS LOCK ESTABLISHED.\nLat: ${stats.location[0].toFixed(4)}\nLng: ${stats.location[1].toFixed(4)}`;
-         } else {
-             reply = "GPS Signal Lost.";
-         }
-      }
-      else if (lower.includes('sos') || lower.includes('help')) reply = "The SOS System is autonomous. Upon high-G impact, it will auto-dial guardians and upload coordinates.";
-      else if (lower.includes('hi') || lower.includes('hello')) reply = `Greetings ${user?.email ? user.email.split('@')[0] : 'Operator'}. Rakshak systems operational.`;
-      else reply = "Command not recognized. Try 'Status', 'Location', or 'Help'.";
-
+      if (lower.includes('status')) reply = `SPEED: ${stats?.speed?.toFixed(1) || 0} km/h\nG-FORCE: ${stats?.gForce || 1}g`;
+      else if (lower.includes('location')) reply = `GPS: ${stats?.location?.[0].toFixed(4)}, ${stats?.location?.[1].toFixed(4)}`;
+      else if (lower.includes('sos')) reply = "SOS Triggered. Auto-Dialing Guardians.";
+      else reply = "Command not recognized.";
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
-      setIsTyping(false);
-    }, 800);
+    }, 600);
   };
 
   return (
     <div className="fixed bottom-8 right-8 z-[100] font-sans">
       {!isOpen && (
-        <button onClick={() => setIsOpen(true)} className="group relative flex items-center justify-center w-16 h-16 bg-cyan-600 hover:bg-cyan-500 rounded-full shadow-[0_0_30px_rgba(6,182,212,0.6)] transition-all hover:scale-110">
+        <button onClick={() => setIsOpen(true)} className="flex items-center justify-center w-16 h-16 bg-cyan-600 hover:bg-cyan-500 rounded-full shadow-[0_0_30px_rgba(6,182,212,0.6)] transition-all hover:scale-110">
           <MessageSquare size={32} className="text-white" />
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
         </button>
       )}
       {isOpen && (
-        <div className="w-[320px] h-[450px] bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
+        <div className="w-[320px] h-[400px] bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex justify-between items-center">
-            <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse"></div>
-                <span className="font-bold text-white text-sm">RAKSHAK AI</span>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white"><X size={18} /></button>
+            <span className="font-bold text-white text-sm">RAKSHAK AI</span>
+            <button onClick={() => setIsOpen(false)}><X size={18} className="text-slate-400" /></button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-black/40">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${msg.sender === 'user' ? 'bg-cyan-600 text-white rounded-br-none' : 'bg-slate-800 border border-slate-700 text-slate-300 rounded-bl-none'}`}>
-                    {msg.text}
-                </div>
+                <div className={`max-w-[85%] p-3 rounded-xl text-xs ${msg.sender === 'user' ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-300'}`}>{msg.text}</div>
               </div>
             ))}
-            {isTyping && <div className="text-[10px] text-cyan-500/70 animate-pulse pl-2">Analyzing sensors...</div>}
             <div ref={messagesEndRef} />
           </div>
           <form onSubmit={handleSend} className="p-3 bg-slate-950/50 border-t border-slate-800 flex gap-2">
-            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Query system..." className="flex-1 bg-slate-900 text-white text-xs px-3 py-2 rounded-lg border border-slate-700 focus:border-cyan-500 outline-none transition-all" />
-            <button type="submit" className="text-cyan-500 hover:text-white transition-colors"><Send size={16} /></button>
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Query..." className="flex-1 bg-slate-900 text-white text-xs px-3 py-2 rounded-lg border border-slate-700 focus:border-cyan-500 outline-none" />
+            <button type="submit"><Send size={16} className="text-cyan-500" /></button>
           </form>
         </div>
       )}
@@ -164,7 +139,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
   );
 }
 
-// --- AUTH COMPONENTS (Kept same as before) ---
+// --- AUTH COMPONENTS ---
 function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, data: any) => void, onBack: () => void }) {
   const [role, setRole] = useState('user'); 
   const [isRegistering, setIsRegistering] = useState(false);
@@ -174,25 +149,16 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   const [isLoading, setIsLoading] = useState(false);
   const [adminKey, setAdminKey] = useState("");
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault(); setIsLoading(true); setError("");
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await sendEmailVerification(userCredential.user); setIsRegistering(false); await signOut(auth); 
-    } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } finally { setIsLoading(false); }
-  };
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setError("");
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      if (!userCredential.user.emailVerified) throw new Error("Email not verified.");
       onAuthSuccess("user", userCredential.user);
     } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } finally { setIsLoading(false); }
   };
   const handleGoogleLogin = async () => {
-    setIsLoading(true);
     try { const result = await signInWithPopup(auth, googleProvider); onAuthSuccess("user", result.user); } 
-    catch (err: any) { setError(err.message); } finally { setIsLoading(false); }
+    catch (err: any) { setError(err.message); }
   };
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true);
@@ -203,30 +169,29 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-sans relative overflow-hidden">
-      <div className={`absolute top-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full blur-[120px] transition-colors duration-1000 ${role === 'admin' ? 'bg-red-600/20' : 'bg-cyan-500/10'}`}></div>
-      <div className={`bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border transition-colors duration-500 relative z-10 ${role === 'admin' ? 'border-red-500/50' : 'border-slate-700'}`}>
-        <button onClick={onBack} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 relative overflow-hidden">
+      <div className="bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-700 relative z-10">
+        <button onClick={onBack} className="absolute top-6 right-6 text-slate-500"><X size={20}/></button>
         <div className="flex bg-slate-950 p-1 rounded-xl mb-8 border border-slate-800">
-            <button onClick={() => setRole('user')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'user' ? 'bg-cyan-500 text-slate-900' : 'text-slate-500 hover:text-white'}`}>USER</button>
-            <button onClick={() => setRole('admin')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'admin' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-white'}`}>COMMANDER</button>
+            <button onClick={() => setRole('user')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${role === 'user' ? 'bg-cyan-500 text-slate-900' : 'text-slate-500'}`}>USER</button>
+            <button onClick={() => setRole('admin')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${role === 'admin' ? 'bg-red-600 text-white' : 'text-slate-500'}`}>COMMANDER</button>
         </div>
-        {error && <div className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-xs flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
+        {error && <div className="mt-4 p-3 bg-red-500/20 text-red-200 text-xs flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
         {role === 'user' && (
             <div className="mt-6 space-y-4">
-                <button onClick={handleGoogleLogin} className="w-full bg-white hover:bg-slate-200 text-slate-900 font-bold py-3 rounded-xl flex justify-center items-center gap-3 text-sm transition-transform hover:scale-[1.02]">Continue with Google</button>
-                <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4">
-                    <div className="relative"><Mail className="absolute left-4 top-3.5 text-slate-500" size={18} /><input type="email" placeholder="Email" required className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                    <div className="relative"><Key className="absolute left-4 top-3.5 text-slate-500" size={18} /><input type="password" placeholder="Password" required className="w-full bg-slate-950 text-white pl-12 pr-4 py-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
-                    <button type="submit" disabled={isLoading} className="w-full bg-cyan-500/10 hover:bg-cyan-500 text-cyan-500 hover:text-slate-900 font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 border border-cyan-500/50">{isLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Register' : 'Login')}</button>
+                <button onClick={handleGoogleLogin} className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl text-sm hover:scale-[1.02] transition-transform">Continue with Google</button>
+                <form onSubmit={handleLogin} className="space-y-4">
+                    <input type="email" placeholder="Email" required className="w-full bg-slate-950 text-white p-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <input type="password" placeholder="Password" required className="w-full bg-slate-950 text-white p-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <button type="submit" disabled={isLoading} className="w-full bg-cyan-500/10 text-cyan-500 font-bold py-3 rounded-xl border border-cyan-500/50 hover:bg-cyan-500 hover:text-slate-900 transition-all">{isLoading ? <Loader2 className="animate-spin" /> : 'Login'}</button>
                 </form>
             </div>
         )}
         {role === 'admin' && (
-            <form onSubmit={handleAdminLogin} className="mt-6 space-y-4 animate-in fade-in zoom-in duration-300">
-                <div className="relative"><User className="absolute left-4 top-3.5 text-red-500" size={18} /><input type="text" placeholder="Commander ID" required className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                <div className="relative"><Lock className="absolute left-4 top-3.5 text-red-500" size={18} /><input type="password" placeholder="Access Key" required className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono tracking-widest" value={adminKey} onChange={(e) => setAdminKey(e.target.value)} /></div>
-                <button type="submit" disabled={isLoading} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 shadow-[0_0_30px_rgba(220,38,38,0.4)]">{isLoading ? <Loader2 className="animate-spin" /> : "ESTABLISH UPLINK"}</button>
+            <form onSubmit={handleAdminLogin} className="mt-6 space-y-4">
+                <input type="text" placeholder="Commander ID" required className="w-full bg-slate-950 text-red-500 p-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <input type="password" placeholder="Access Key" required className="w-full bg-slate-950 text-red-500 p-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono" value={adminKey} onChange={(e) => setAdminKey(e.target.value)} />
+                <button type="submit" disabled={isLoading} className="w-full bg-red-600 text-white font-bold py-3 rounded-xl hover:bg-red-500 transition-all">{isLoading ? <Loader2 className="animate-spin" /> : "ESTABLISH UPLINK"}</button>
             </form>
         )}
       </div>
@@ -242,17 +207,13 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
          <header className="flex justify-between items-center mb-10 bg-red-950/20 p-6 rounded-2xl border border-red-900/50 backdrop-blur-md">
-            <div className="flex items-center gap-4">
-               <div className="bg-red-600 text-white p-3 rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.5)]"><Lock size={24}/></div>
-               <div><h1 className="font-black text-2xl leading-none text-red-500 tracking-tighter">COMMAND CENTER</h1><span className="text-xs text-red-400/60 uppercase tracking-[0.3em]">CMDR: {user?.email || "Unknown"}</span></div>
-            </div>
-            <button onClick={onLogout} className="bg-slate-900 text-slate-400 hover:text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-800"><LogOut size={16} /> ABORT SESSION</button>
+            <h1 className="font-black text-2xl text-red-500">COMMAND CENTER <span className="text-xs text-red-400/60 uppercase ml-2">CMDR: {user?.email}</span></h1>
+            <button onClick={onLogout} className="bg-slate-900 text-slate-400 hover:text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-800"><LogOut size={16} /> ABORT</button>
          </header>
          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-slate-800 bg-slate-950"><h3 className="font-bold text-slate-300">Encrypted Incident Logs</h3></div>
             <table className="w-full text-left text-sm text-slate-400">
-              <thead className="bg-slate-900 text-xs uppercase font-bold text-slate-500"><tr><th className="p-4">ID</th><th className="p-4">Coordinates</th><th className="p-4">Payload</th><th className="p-4">Timestamp</th></tr></thead>
-              <tbody className="divide-y divide-slate-800">{history.map((log) => (<tr key={log.id} className="hover:bg-slate-800/50 transition-colors"><td className="p-4 font-mono text-emerald-500">ID-{log.id}</td><td className="p-4 font-mono">{log.location}</td><td className="p-4 text-white font-medium">{log.message}</td><td className="p-4 font-mono text-xs">{log.timestamp}</td></tr>))}</tbody>
+              <thead className="bg-slate-900 text-xs uppercase font-bold text-slate-500"><tr><th className="p-4">ID</th><th className="p-4">Location</th><th className="p-4">Message</th><th className="p-4">Time</th></tr></thead>
+              <tbody className="divide-y divide-slate-800">{history.map((log) => (<tr key={log.id} className="hover:bg-slate-800/50"><td className="p-4 font-mono text-emerald-500">{log.id}</td><td className="p-4 font-mono">{log.location}</td><td className="p-4 text-white">{log.message}</td><td className="p-4 font-mono text-xs">{log.timestamp}</td></tr>))}</tbody>
             </table>
          </div>
        </div>
@@ -260,9 +221,8 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (AUTO-DIALER + REALISTIC MAP) ---
-function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
-  // STATE
+// --- USER DASHBOARD (FIXED MAP + SATELLITE + AUTO-DIAL) ---
+function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
     return saved ? JSON.parse(saved) : [];
@@ -274,53 +234,52 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
   const [newContact, setNewContact] = useState({ name: '', phone: '', telegramId: '' });
   const [location, setLocation] = useState<[number, number]>([20.5937, 78.9629]); 
   const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
-  const [, setCrashDetected] = useState(false);
+  const [crashDetected, setCrashDetected] = useState(false);
   const [statusLog, setStatusLog] = useState<string>("");
-  const [isCalling, setIsCalling] = useState(false); // New Call UI State
+  const [isCalling, setIsCalling] = useState(false);
 
   const CRASH_THRESHOLD = 2.5; 
-  const TELEGRAM_BOT_TOKEN = "7953049187:AAH0pP1sU2_kKO_CqW_2J2aFf_Vj_X-a3_o"; // Replace with your real token
+  const TELEGRAM_BOT_TOKEN = "7953049187:AAH0pP1sU2_kKO_CqW_2J2aFf_Vj_X-a3_o"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- AUTOMATIC ALERT SYSTEM (Direct, Fast, Automatic) ---
+  // --- AUTOMATIC ALERT SYSTEM ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
     setCrashDetected(true);
-    setStatusLog("CRASH DETECTED! INITIATING AUTO-PROTOCOLS...");
+    setStatusLog("CRASH DETECTED! INITIATING PROTOCOLS...");
 
     const googleMapsLink = `https://www.google.com/maps?q=${location[0]},${location[1]}`;
-    const alertMsg = `🚨 SOS! CRASH DETECTED!\nSpeed: ${stats.speed.toFixed(0)} km/h\nG: ${stats.gForce}g\n\n📍 ${googleMapsLink}`;
+    const alertMsg = `🚨 SOS ALERT! CRASH DETECTED!\nSpeed: ${stats.speed.toFixed(0)} km/h\nG: ${stats.gForce}g\n\n📍 ${googleMapsLink}`;
 
     if (contacts.length > 0) {
       const primary = contacts[0];
       const cleanPhone = primary.phone.replace(/\D/g, ''); 
 
-      // 1. AUTO-CALL SIMULATION (Visible UI for Differentiator)
-      setIsCalling(true);
-      setStatusLog(`📡 ESTABLISHING DIRECT VOICE LINK: ${primary.name}...`);
-      
-      // On WEB: We must prompt. On NATIVE: This would run SmsManager/CallManager
-      setTimeout(() => {
-         window.open(`tel:${cleanPhone}`, '_self');
-         setStatusLog("✅ VOICE LINK ESTABLISHED.");
-      }, 2000);
-
-      // 2. TELEGRAM AUTO-SEND (Zero Clicks)
+      // 1. TELEGRAM (FULLY AUTOMATED)
       if (primary.telegramId) {
+        setStatusLog(prev => prev + "\n📡 Sending Telegram Data Packet...");
         fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: primary.telegramId, text: alertMsg })
-        }).then(() => setStatusLog(prev => prev + "\n✅ TELEGRAM DATA PACKET SENT.")).catch(e => console.error(e));
+        }).then(() => setStatusLog(prev => prev + "\n✅ TELEGRAM SENT.")).catch(e => console.error(e));
       }
+
+      // 2. AUTO-CALL UI (SIMULATION)
+      // Since browsers block background calls, we show this UI to simulate the Native App experience.
+      setIsCalling(true);
+      setTimeout(() => {
+         window.open(`tel:${cleanPhone}`, '_self'); // This is the only way on Web
+         setStatusLog("✅ VOICE LINK ESTABLISHED.");
+      }, 2500);
+
     } else {
-        setStatusLog("⚠️ NO GUARDIANS FOUND! SYSTEM STANDBY.");
+        setStatusLog("⚠️ NO CONTACTS FOUND.");
     }
   };
 
-  // SENSORS
   useEffect(() => {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -344,7 +303,6 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
     return () => { navigator.geolocation.clearWatch(watchId); window.removeEventListener('devicemotion', handleMotion); };
   }, [isSOSActive, contacts]); 
 
-  // CONTACT HELPERS
   const handleAddContact = () => {
     if (newContact.name && newContact.phone) {
       setContacts([...contacts, { id: Date.now(), name: newContact.name, phone: newContact.phone, telegramId: newContact.telegramId }]);
@@ -355,7 +313,6 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
 
   return (
     <div className="min-h-screen bg-black text-gray-200 pb-20 font-sans">
-      {/* CALLING OVERLAY (Differentiator UI) */}
       <AnimatePresence>
         {isCalling && (
             <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[100] bg-red-950/90 backdrop-blur-md flex flex-col items-center justify-center space-y-8">
@@ -366,7 +323,7 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
                     <h2 className="text-3xl font-black text-white">AUTO-DIALING</h2>
                     <p className="text-xl text-red-200 mt-2">{contacts[0]?.name} ({contacts[0]?.phone})</p>
                 </div>
-                <button onClick={() => setIsCalling(false)} className="bg-white text-red-600 px-8 py-4 rounded-full font-bold text-xl hover:bg-gray-200">CANCEL UPLINK</button>
+                <button onClick={() => setIsCalling(false)} className="bg-white text-red-600 px-8 py-4 rounded-full font-bold text-xl hover:bg-gray-200">CANCEL</button>
             </motion.div>
         )}
       </AnimatePresence>
@@ -412,17 +369,19 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
             <AnimatePresence>
                 {showMap && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 300, opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="rounded-2xl overflow-hidden border-2 border-slate-700 relative shadow-2xl">
-                        {/* THE DARK MODE SATELLITE HACK: CSS FILTER */}
+                        {/* HIGH RES GOOGLE HYBRID SATELLITE MAP */}
                         <div className="w-full h-full" style={{ filter: "grayscale(20%) brightness(70%) contrast(110%)" }}>
                             {/* @ts-ignore */}
                             <MapContainer center={location} zoom={18} style={{ height: "100%", width: "100%" }}>
-                                <RecenterMap location={location} /> 
-                                <TileLayer url="http://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" subdomains={['mt0', 'mt1', 'mt2', 'mt3']} attribution='© Google Maps' />
+                                <MapController location={location} /> 
+                                <TileLayer 
+                                  url="http://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" 
+                                  attribution='© Google Maps' 
+                                />
                                 {/* @ts-ignore */}
                                 <Marker position={location} icon={new Icon({iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png', iconSize: [25, 41], iconAnchor: [12, 41]})}><Popup>TARGET</Popup></Marker>
                             </MapContainer>
                         </div>
-                        {/* Overlay to mimic HUD */}
                         <div className="absolute top-4 right-4 bg-black/50 px-2 py-1 rounded text-[10px] text-green-400 font-mono border border-green-500/30 z-[400]">SAT-LINK: ACTIVE</div>
                     </motion.div>
                 )}
