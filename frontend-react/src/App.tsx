@@ -9,7 +9,7 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall, MessageCircle
+  Globe, Activity, Radio, PhoneCall, MessageCircle, CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -197,7 +197,6 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
 
 // --- ADMIN DASHBOARD ---
 function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, user: any, history: any[] }) {
-  // Now using PROPS for history to ensure instant sync
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
@@ -224,7 +223,7 @@ function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, use
   );
 }
 
-// --- USER DASHBOARD (THE TRIPLE STRIKE UPDATE) ---
+// --- USER DASHBOARD (AUTO-RESET ENABLED) ---
 function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: any, addHistory: (log: any) => void }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
@@ -241,14 +240,14 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
   const [isCalling, setIsCalling] = useState(false);
 
   // LOAD GOOGLE MAPS
-  const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); // Add key if you have one
+  const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
 
   const CRASH_THRESHOLD = 2.5; 
   const TELEGRAM_BOT_TOKEN = "7953049187:AAH0pP1sU2_kKO_CqW_2J2aFf_Vj_X-a3_o"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- THE "TRIPLE STRIKE" SOS PROTOCOL ---
+  // --- THE "TRIPLE STRIKE" SOS PROTOCOL (WITH AUTO-RESET) ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
@@ -258,14 +257,14 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Blocked", e));
 
-    // 2. SAVE TO BACKEND (SYNC WITH ADMIN)
+    // 2. SAVE TO BACKEND
     const newLog = {
         time: new Date().toLocaleTimeString(),
         location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
         user: user.email,
         status: "SOS DEPLOYED"
     };
-    addHistory(newLog); // Push to Admin Dashboard Instantly
+    addHistory(newLog); 
 
     const googleMapsLink = `http://maps.google.com/?q=${location.lat},${location.lng}`;
     const alertMsg = `🚨 SOS! CRASH DETECTED!\nUser: ${user.email}\nSpeed: ${stats.speed.toFixed(0)} km/h\nG: ${stats.gForce}g\n\n📍 ${googleMapsLink}`;
@@ -274,12 +273,14 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
       const primary = contacts[0];
       const cleanPhone = primary.phone.replace(/\D/g, ''); 
 
-      // STEP 1: TELEGRAM (Silent & Instant)
+      // STEP 1: TELEGRAM (Auto & Instant)
       if (primary.telegramId) {
         fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: primary.telegramId, text: alertMsg })
-        }).then(() => setStatusLog(prev => prev + "\n✅ [1/3] TELEGRAM PACKET SENT."));
+        })
+        .then(() => setStatusLog(prev => prev + "\n✅ [1/3] TELEGRAM PACKET SENT."))
+        .catch(err => setStatusLog(prev => prev + "\n❌ TELEGRAM FAILED: " + err.message));
       }
 
       // STEP 2: WHATSAPP (Visual Fallback)
@@ -288,14 +289,24 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
         window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(alertMsg)}`, '_blank');
       }, 1500);
 
-      // STEP 3: PHONE CALL (Highest Priority - Opens Last to stay on screen)
+      // STEP 3: PHONE CALL (Opens Last)
       setIsCalling(true);
       setTimeout(() => {
          window.open(`tel:${cleanPhone}`, '_self');
          setStatusLog(prev => prev + "\n✅ [3/3] VOICE LINE ESTABLISHED.");
       }, 3000);
+
+      // STEP 4: AUTO-RESET (Back to Normal)
+      setTimeout(() => {
+         setIsSOSActive(false);
+         setIsCalling(false);
+         setStatusLog("✅ PROTOCOL COMPLETE. SYSTEM RESET.");
+      }, 10000); // Resets after 10 seconds
+
     } else {
         setStatusLog("⚠️ NO GUARDIANS FOUND! SYSTEM STANDBY.");
+        // Reset faster if no contacts
+        setTimeout(() => setIsSOSActive(false), 3000);
     }
   };
 
@@ -425,12 +436,11 @@ function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   );
 }
 
-// --- MAIN APP (STATE LIFTING FOR HISTORY SYNC) ---
+// --- MAIN APP ---
 function App() {
   const [view, setView] = useState('landing'); 
   const [user, setUser] = useState<any>(null); 
   const [isAuthChecking, setIsAuthChecking] = useState(true); 
-  // STATE LIFTING: History is now managed here so Admin & User share it instantly
   const [history, setHistory] = useState<any[]>([]);
 
   useEffect(() => {
@@ -450,10 +460,7 @@ function App() {
   const handleAuthSuccess = (role: string, userData: any) => { if (role === 'admin') localStorage.setItem('rakshak_role', 'admin'); setUser(userData); setView(role); };
   const handleLogout = async () => { localStorage.removeItem('rakshak_role'); if(auth) await signOut(auth); setUser(null); setView('landing'); };
   
-  // Helper to add history from UserApp
-  const addHistoryLog = (log: any) => {
-    setHistory(prev => [log, ...prev]);
-  };
+  const addHistoryLog = (log: any) => { setHistory(prev => [log, ...prev]); };
 
   if (isAuthChecking) {
     return (
