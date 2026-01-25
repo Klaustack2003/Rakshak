@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { initializeApp } from "firebase/app";
 import { 
@@ -9,12 +9,11 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall
+  Globe, Activity, Radio, PhoneCall, History, PlayCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { Icon } from 'leaflet'; 
-import 'leaflet/dist/leaflet.css';
+// NEW MAP LIBRARY
+import { GoogleMap, useLoadScript, MarkerF } from '@react-google-maps/api';
 
 // --- VISUAL COMPONENTS ---
 import { Header } from '@/components/landing/Header';
@@ -48,8 +47,6 @@ try {
     console.error("Firebase Init Error:", e);
 }
 
-const API_URL = "https://rakshak-api-sovy.onrender.com";
-
 // --- ERROR BOUNDARY ---
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -66,19 +63,6 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     }
     return this.props.children;
   }
-}
-
-// --- MAP CONTROLLER (FIXES BLINKING) ---
-// This component listens for location changes and "Flies" the camera there smoothly
-// instead of reloading the whole map.
-function MapController({ location }: { location: [number, number] }) {
-  const map = useMap();
-  useEffect(() => {
-    if (location) {
-      map.flyTo(location, 18, { animate: true, duration: 1.5 }); // Smooth flight
-    }
-  }, [location, map]);
-  return null;
 }
 
 // --- RAKSHAK BOT ---
@@ -101,7 +85,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
       let reply = "Processing...";
       const lower = userText.toLowerCase();
       if (lower.includes('status')) reply = `SPEED: ${stats?.speed?.toFixed(1) || 0} km/h\nG-FORCE: ${stats?.gForce || 1}g`;
-      else if (lower.includes('location')) reply = `GPS: ${stats?.location?.[0].toFixed(4)}, ${stats?.location?.[1].toFixed(4)}`;
+      else if (lower.includes('location')) reply = `GPS: ${stats?.location?.lat.toFixed(4)}, ${stats?.location?.lng.toFixed(4)}`;
       else if (lower.includes('sos')) reply = "SOS Triggered. Auto-Dialing Guardians.";
       else reply = "Command not recognized.";
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
@@ -139,7 +123,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
   );
 }
 
-// --- AUTH COMPONENTS ---
+// --- AUTH COMPONENTS (FIXED REGISTER TOGGLE) ---
 function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, data: any) => void, onBack: () => void }) {
   const [role, setRole] = useState('user'); 
   const [isRegistering, setIsRegistering] = useState(false);
@@ -149,6 +133,16 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   const [isLoading, setIsLoading] = useState(false);
   const [adminKey, setAdminKey] = useState("");
 
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault(); setIsLoading(true); setError("");
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      // await sendEmailVerification(userCredential.user); // Optional: Send verification
+      // Automatically log them in after register
+      onAuthSuccess("user", userCredential.user);
+    } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } finally { setIsLoading(false); }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setError("");
     try {
@@ -156,6 +150,7 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
       onAuthSuccess("user", userCredential.user);
     } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } finally { setIsLoading(false); }
   };
+  
   const handleGoogleLogin = async () => {
     try { const result = await signInWithPopup(auth, googleProvider); onAuthSuccess("user", result.user); } 
     catch (err: any) { setError(err.message); }
@@ -177,14 +172,21 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
             <button onClick={() => setRole('admin')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${role === 'admin' ? 'bg-red-600 text-white' : 'text-slate-500'}`}>COMMANDER</button>
         </div>
         {error && <div className="mt-4 p-3 bg-red-500/20 text-red-200 text-xs flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
+        
         {role === 'user' && (
             <div className="mt-6 space-y-4">
                 <button onClick={handleGoogleLogin} className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl text-sm hover:scale-[1.02] transition-transform">Continue with Google</button>
-                <form onSubmit={handleLogin} className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-500 text-xs justify-center"><div className="h-[1px] bg-slate-800 flex-1"></div>OR<div className="h-[1px] bg-slate-800 flex-1"></div></div>
+                
+                <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4">
                     <input type="email" placeholder="Email" required className="w-full bg-slate-950 text-white p-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none" value={email} onChange={(e) => setEmail(e.target.value)} />
                     <input type="password" placeholder="Password" required className="w-full bg-slate-950 text-white p-3 rounded-xl border border-slate-800 focus:border-cyan-500 outline-none" value={password} onChange={(e) => setPassword(e.target.value)} />
-                    <button type="submit" disabled={isLoading} className="w-full bg-cyan-500/10 text-cyan-500 font-bold py-3 rounded-xl border border-cyan-500/50 hover:bg-cyan-500 hover:text-slate-900 transition-all">{isLoading ? <Loader2 className="animate-spin" /> : 'Login'}</button>
+                    <button type="submit" disabled={isLoading} className="w-full bg-cyan-500/10 text-cyan-500 font-bold py-3 rounded-xl border border-cyan-500/50 hover:bg-cyan-500 hover:text-slate-900 transition-all">{isLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Register New ID' : 'Login')}</button>
                 </form>
+                
+                <button onClick={() => setIsRegistering(!isRegistering)} className="w-full text-center text-xs text-slate-500 hover:text-white mt-4 underline">
+                    {isRegistering ? "Already have an account? Login" : "New Operator? Create Account"}
+                </button>
             </div>
         )}
         {role === 'admin' && (
@@ -199,10 +201,22 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   );
 }
 
-// --- ADMIN DASHBOARD ---
+// --- ADMIN DASHBOARD (CONNECTED TO HISTORY) ---
 function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [history, setHistory] = useState<any[]>([]);
-  useEffect(() => { axios.get(`${API_URL}/view_history`).then(res => setHistory(res.data)).catch(console.error); }, []);
+  
+  // FIX: Load history from localStorage (Simulating DB)
+  useEffect(() => { 
+    const savedHistory = localStorage.getItem('rakshak_history');
+    if (savedHistory) setHistory(JSON.parse(savedHistory));
+  }, []);
+
+  // Clear History
+  const clearHistory = () => {
+    localStorage.removeItem('rakshak_history');
+    setHistory([]);
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
@@ -211,17 +225,25 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
             <button onClick={onLogout} className="bg-slate-900 text-slate-400 hover:text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-800"><LogOut size={16} /> ABORT</button>
          </header>
          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
-            <table className="w-full text-left text-sm text-slate-400">
-              <thead className="bg-slate-900 text-xs uppercase font-bold text-slate-500"><tr><th className="p-4">ID</th><th className="p-4">Location</th><th className="p-4">Message</th><th className="p-4">Time</th></tr></thead>
-              <tbody className="divide-y divide-slate-800">{history.map((log) => (<tr key={log.id} className="hover:bg-slate-800/50"><td className="p-4 font-mono text-emerald-500">{log.id}</td><td className="p-4 font-mono">{log.location}</td><td className="p-4 text-white">{log.message}</td><td className="p-4 font-mono text-xs">{log.timestamp}</td></tr>))}</tbody>
-            </table>
+            <div className="flex justify-between items-center p-6 border-b border-slate-800 bg-slate-950">
+                <h3 className="font-bold text-slate-300">Incident Logs (LocalStorage)</h3>
+                <button onClick={clearHistory} className="text-xs text-red-500 hover:text-red-400">CLEAR LOGS</button>
+            </div>
+            {history.length === 0 ? (
+                <div className="p-8 text-center text-slate-600 text-sm">No incidents recorded yet.</div>
+            ) : (
+                <table className="w-full text-left text-sm text-slate-400">
+                    <thead className="bg-slate-900 text-xs uppercase font-bold text-slate-500"><tr><th className="p-4">Time</th><th className="p-4">Coordinates</th><th className="p-4">User</th><th className="p-4">Status</th></tr></thead>
+                    <tbody className="divide-y divide-slate-800">{history.map((log, i) => (<tr key={i} className="hover:bg-slate-800/50"><td className="p-4 font-mono text-emerald-500">{log.time}</td><td className="p-4 font-mono">{log.location}</td><td className="p-4 text-white">{log.user}</td><td className="p-4 font-bold text-red-500">{log.status}</td></tr>))}</tbody>
+                </table>
+            )}
          </div>
        </div>
     </div>
   );
 }
 
-// --- USER DASHBOARD (FIXED MAP + SATELLITE + AUTO-DIAL) ---
+// --- USER DASHBOARD (GOOGLE MAPS + HISTORY SAVE + SOUND) ---
 function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
@@ -232,63 +254,73 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [isSOSActive, setIsSOSActive] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [newContact, setNewContact] = useState({ name: '', phone: '', telegramId: '' });
-  const [location, setLocation] = useState<[number, number]>([20.5937, 78.9629]); 
+  const [location, setLocation] = useState<{ lat: number, lng: number }>({ lat: 20.5937, lng: 78.9629 }); 
   const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
-  const [crashDetected, setCrashDetected] = useState(false);
   const [statusLog, setStatusLog] = useState<string>("");
   const [isCalling, setIsCalling] = useState(false);
+
+  // LOAD GOOGLE MAPS
+  const { isLoaded } = useLoadScript({
+    googleMapsApiKey: "", // PUT YOUR KEY HERE if you have one. If empty, it works but shows a watermark.
+  });
 
   const CRASH_THRESHOLD = 2.5; 
   const TELEGRAM_BOT_TOKEN = "7953049187:AAH0pP1sU2_kKO_CqW_2J2aFf_Vj_X-a3_o"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- AUTOMATIC ALERT SYSTEM ---
+  // --- SOS PROTOCOL ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
-    setCrashDetected(true);
-    setStatusLog("CRASH DETECTED! INITIATING PROTOCOLS...");
+    setStatusLog("CRASH DETECTED! INITIATING AUTO-PROTOCOLS...");
 
-    const googleMapsLink = `https://www.google.com/maps?q=${location[0]},${location[1]}`;
-    const alertMsg = `🚨 SOS ALERT! CRASH DETECTED!\nSpeed: ${stats.speed.toFixed(0)} km/h\nG: ${stats.gForce}g\n\n📍 ${googleMapsLink}`;
+    // 1. PLAY SIREN SOUND (Real URL)
+    const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); // Free siren sound
+    audio.play().catch(e => console.log("Audio play failed (user didn't interact yet):", e));
+
+    // 2. SAVE TO HISTORY (For Admin to see)
+    const newLog = {
+        time: new Date().toLocaleTimeString(),
+        location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
+        user: user.email,
+        status: "CRASH DETECTED - SOS SENT"
+    };
+    const currentHistory = JSON.parse(localStorage.getItem('rakshak_history') || "[]");
+    localStorage.setItem('rakshak_history', JSON.stringify([newLog, ...currentHistory]));
+
+    const googleMapsLink = `http://maps.google.com/?q=${location.lat},${location.lng}`;
+    const alertMsg = `🚨 SOS! CRASH DETECTED!\nSpeed: ${stats.speed.toFixed(0)} km/h\nG: ${stats.gForce}g\n\n📍 ${googleMapsLink}`;
 
     if (contacts.length > 0) {
       const primary = contacts[0];
       const cleanPhone = primary.phone.replace(/\D/g, ''); 
 
-      // 1. TELEGRAM (FULLY AUTOMATED)
       if (primary.telegramId) {
-        setStatusLog(prev => prev + "\n📡 Sending Telegram Data Packet...");
         fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: primary.telegramId, text: alertMsg })
-        }).then(() => setStatusLog(prev => prev + "\n✅ TELEGRAM SENT.")).catch(e => console.error(e));
+        }).then(() => setStatusLog(prev => prev + "\n✅ TELEGRAM SENT."));
       }
 
-      // 2. AUTO-CALL UI (SIMULATION)
-      // Since browsers block background calls, we show this UI to simulate the Native App experience.
       setIsCalling(true);
       setTimeout(() => {
-         window.open(`tel:${cleanPhone}`, '_self'); // This is the only way on Web
+         window.open(`tel:${cleanPhone}`, '_self');
          setStatusLog("✅ VOICE LINK ESTABLISHED.");
       }, 2500);
-
     } else {
-        setStatusLog("⚠️ NO CONTACTS FOUND.");
+        setStatusLog("⚠️ NO GUARDIANS FOUND! SYSTEM STANDBY.");
     }
   };
 
   useEffect(() => {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const newLoc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setLocation(newLoc);
         setStats(prev => ({ ...prev, speed: pos.coords.speed ? (pos.coords.speed * 3.6) : 0, altitude: pos.coords.altitude || 0, location: newLoc }));
       },
-      (err) => console.error(err),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+      (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
     );
     const handleMotion = (e: DeviceMotionEvent) => {
       if (e.accelerationIncludingGravity) {
@@ -319,10 +351,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
                 <div className="w-32 h-32 bg-red-600 rounded-full flex items-center justify-center animate-ping">
                     <PhoneCall size={48} className="text-white"/>
                 </div>
-                <div className="text-center">
-                    <h2 className="text-3xl font-black text-white">AUTO-DIALING</h2>
-                    <p className="text-xl text-red-200 mt-2">{contacts[0]?.name} ({contacts[0]?.phone})</p>
-                </div>
+                <div className="text-center"><h2 className="text-3xl font-black text-white">AUTO-DIALING</h2><p className="text-xl text-red-200 mt-2">{contacts[0]?.name}</p></div>
                 <button onClick={() => setIsCalling(false)} className="bg-white text-red-600 px-8 py-4 rounded-full font-bold text-xl hover:bg-gray-200">CANCEL</button>
             </motion.div>
         )}
@@ -347,41 +376,25 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
         {activeTab === 'defense' && (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center">
-                <Activity size={14} className="text-cyan-600 mb-1" />
-                <div className="text-[10px] text-slate-500 font-bold tracking-widest">SPEED</div>
-                <div className="text-xl font-mono text-cyan-400">{stats.speed.toFixed(0)}</div>
-              </div>
-              <div className={`p-3 rounded-xl border text-center flex flex-col items-center transition-all ${stats.gForce > 2 ? 'bg-red-950/30 border-red-500/50 animate-pulse' : 'bg-slate-900/50 border-slate-800'}`}>
-                <Zap size={14} className={`${stats.gForce > 2 ? 'text-red-500' : 'text-yellow-600'} mb-1`} />
-                <div className="text-[10px] text-slate-500 font-bold tracking-widest">G-FORCE</div>
-                <div className={`text-xl font-mono ${stats.gForce > 2 ? 'text-red-500' : 'text-white'}`}>{stats.gForce}g</div>
-              </div>
-              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center">
-                <Radio size={14} className="text-purple-600 mb-1" />
-                <div className="text-[10px] text-slate-500 font-bold tracking-widest">ALTITUDE</div>
-                <div className="text-xl font-mono text-purple-400">{stats.altitude.toFixed(0)}m</div>
-              </div>
+              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center"><Activity size={14} className="text-cyan-600 mb-1" /><div className="text-[10px] text-slate-500 font-bold tracking-widest">SPEED</div><div className="text-xl font-mono text-cyan-400">{stats.speed.toFixed(0)}</div></div>
+              <div className={`p-3 rounded-xl border text-center flex flex-col items-center transition-all ${stats.gForce > 2 ? 'bg-red-950/30 border-red-500/50 animate-pulse' : 'bg-slate-900/50 border-slate-800'}`}><Zap size={14} className={`${stats.gForce > 2 ? 'text-red-500' : 'text-yellow-600'} mb-1`} /><div className="text-[10px] text-slate-500 font-bold tracking-widest">G-FORCE</div><div className={`text-xl font-mono ${stats.gForce > 2 ? 'text-red-500' : 'text-white'}`}>{stats.gForce}g</div></div>
+              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center"><Radio size={14} className="text-purple-600 mb-1" /><div className="text-[10px] text-slate-500 font-bold tracking-widest">ALTITUDE</div><div className="text-xl font-mono text-purple-400">{stats.altitude.toFixed(0)}m</div></div>
             </div>
 
             <button onClick={() => setShowMap(!showMap)} className="w-full py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-400 hover:border-cyan-900/50 transition-all flex items-center justify-center gap-2 text-sm font-bold"><Globe size={18} /> {showMap ? "CLOSE SAT-FEED" : "LIVE SAT-FEED"}</button>
 
             <AnimatePresence>
-                {showMap && (
+                {showMap && isLoaded && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 300, opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="rounded-2xl overflow-hidden border-2 border-slate-700 relative shadow-2xl">
-                        {/* HIGH RES GOOGLE HYBRID SATELLITE MAP */}
-                        <div className="w-full h-full" style={{ filter: "grayscale(20%) brightness(70%) contrast(110%)" }}>
-                            {/* @ts-ignore */}
-                            <MapContainer center={location} zoom={18} style={{ height: "100%", width: "100%" }}>
-                                <MapController location={location} /> 
-                                <TileLayer 
-                                  url="http://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" 
-                                  attribution='© Google Maps' 
-                                />
-                                {/* @ts-ignore */}
-                                <Marker position={location} icon={new Icon({iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png', iconSize: [25, 41], iconAnchor: [12, 41]})}><Popup>TARGET</Popup></Marker>
-                            </MapContainer>
-                        </div>
+                        {/* REAL GOOGLE MAPS */}
+                        <GoogleMap 
+                            mapContainerStyle={{ width: '100%', height: '100%' }} 
+                            center={location} 
+                            zoom={18}
+                            options={{ mapTypeId: 'hybrid', disableDefaultUI: true, zoomControl: true }}
+                        >
+                             <MarkerF position={location} />
+                        </GoogleMap>
                         <div className="absolute top-4 right-4 bg-black/50 px-2 py-1 rounded text-[10px] text-green-400 font-mono border border-green-500/30 z-[400]">SAT-LINK: ACTIVE</div>
                     </motion.div>
                 )}
@@ -404,7 +417,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
                <div className="space-y-2">
                  <Input placeholder="Name" className="bg-slate-950 border-slate-800 text-white" value={newContact.name} onChange={(e) => setNewContact({...newContact, name: e.target.value})}/>
                  <Input placeholder="Phone (Required)" className="bg-slate-950 border-slate-800 text-white" value={newContact.phone} onChange={(e) => setNewContact({...newContact, phone: e.target.value})}/>
-                 <Input placeholder="Telegram ID (Optional for Auto-Text)" className="bg-slate-950 border-slate-800 text-white" value={newContact.telegramId} onChange={(e) => setNewContact({...newContact, telegramId: e.target.value})}/>
+                 <Input placeholder="Telegram ID (Optional)" className="bg-slate-950 border-slate-800 text-white" value={newContact.telegramId} onChange={(e) => setNewContact({...newContact, telegramId: e.target.value})}/>
                  <Button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold">SAVE CONTACT</Button>
                </div>
             </div>
@@ -420,7 +433,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
           </div>
         )}
       </main>
-      <RakshakBot />
+      <RakshakBot stats={stats} user={user} />
     </div>
   );
 }
