@@ -9,7 +9,7 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall, MessageCircle, CheckCircle
+  Globe, Activity, Radio, PhoneCall, CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -88,7 +88,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
       const lower = userText.toLowerCase();
       if (lower.includes('status')) reply = `SPEED: ${stats?.speed?.toFixed(1) || 0} km/h\nG-FORCE: ${stats?.gForce || 1}g`;
       else if (lower.includes('location')) reply = `GPS: ${stats?.location?.lat.toFixed(4)}, ${stats?.location?.lng.toFixed(4)}`;
-      else if (lower.includes('sos')) reply = "SOS Triggered. Executing Triple-Strike Protocol (Call + SMS + Data).";
+      else if (lower.includes('sos')) reply = "SOS Triggered. Executing Dual-Strike Protocol (Telegram + Call).";
       else reply = "Command not recognized.";
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
     }, 600);
@@ -223,7 +223,7 @@ function AdminDashboard({ onLogout, user, history }: { onLogout: () => void, use
   );
 }
 
-// --- USER DASHBOARD (FIXED: FORCED CALL + SIMPLER TELEGRAM) ---
+// --- USER DASHBOARD (REMOVED WHATSAPP - DUAL STRIKE ONLY) ---
 function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: any, addHistory: (log: any) => void }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
@@ -243,16 +243,15 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
   const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
 
   const CRASH_THRESHOLD = 2.5; 
-  // USE YOUR REAL BOT TOKEN HERE
   const TELEGRAM_BOT_TOKEN = "7953049187:AAH0pP1sU2_kKO_CqW_2J2aFf_Vj_X-a3_o"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- THE FIXED SOS PROTOCOL ---
+  // --- THE "DUAL STRIKE" SOS PROTOCOL (No WhatsApp) ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
-    setStatusLog("CRASH DETECTED! INITIATING TRIPLE-STRIKE PROTOCOL...");
+    setStatusLog("CRASH DETECTED! INITIATING DUAL-STRIKE PROTOCOL...");
 
     // 1. SOUND SIREN
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
@@ -274,36 +273,27 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
       const primary = contacts[0];
       const cleanPhone = primary.phone.replace(/\D/g, ''); 
 
-      // STEP 1: TELEGRAM (Using Simple GET Request to fix CORS)
+      // STEP 1: TELEGRAM (Auto)
       if (primary.telegramId) {
-        // We use encodeURIComponent to ensure the message URL is valid
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}`;
-        
         fetch(url)
         .then(res => {
-            if(res.ok) setStatusLog(prev => prev + "\n✅ [1/3] TELEGRAM PACKET SENT.");
-            else setStatusLog(prev => prev + "\n❌ TELEGRAM ERROR: Check Chat ID.");
+            if(res.ok) setStatusLog(prev => prev + "\n✅ [1/2] TELEGRAM PACKET SENT.");
+            else setStatusLog(prev => prev + "\n❌ TELEGRAM ERROR.");
         })
-        .catch(err => setStatusLog(prev => prev + "\n❌ TELEGRAM FAILED: Network Error."));
+        .catch(err => setStatusLog(prev => prev + "\n❌ TELEGRAM FAILED."));
       } else {
-        setStatusLog(prev => prev + "\n⚠️ SKIPPED TELEGRAM (No ID Found).");
+        setStatusLog(prev => prev + "\n⚠️ SKIPPED TELEGRAM (No ID).");
       }
 
-      // STEP 2: WHATSAPP (Visual Fallback)
-      setTimeout(() => {
-        setStatusLog(prev => prev + "\n✅ [2/3] OPENING WHATSAPP SECURE LINK...");
-        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(alertMsg)}`, '_blank');
-      }, 1500);
-
-      // STEP 3: PHONE CALL (Forced Redirection)
+      // STEP 2: PHONE CALL (Forced Redirection)
       setIsCalling(true);
       setTimeout(() => {
-         setStatusLog(prev => prev + "\n✅ [3/3] DIALING EMERGENCY NUMBER...");
-         // window.location.href forces the browser to handle the protocol immediately
+         setStatusLog(prev => prev + "\n✅ [2/2] DIALING EMERGENCY NUMBER...");
          window.location.href = `tel:${cleanPhone}`;
-      }, 3000);
+      }, 2000); // 2 second delay
 
-      // STEP 4: AUTO-RESET
+      // STEP 3: AUTO-RESET (12 Seconds)
       setTimeout(() => {
          setIsSOSActive(false);
          setIsCalling(false);
@@ -311,12 +301,12 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
       }, 12000); 
 
     } else {
-        setStatusLog("⚠️ NO GUARDIANS FOUND! ADD CONTACTS.");
+        setStatusLog("⚠️ NO GUARDIANS FOUND! SYSTEM STANDBY.");
         setTimeout(() => setIsSOSActive(false), 3000);
     }
   };
 
-  // SENSORS (Unchanged)
+  // SENSORS
   useEffect(() => {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
