@@ -9,7 +9,7 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall, CheckCircle
+  Globe, Activity, Radio, CheckCircle, MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -195,27 +195,8 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   );
 }
 
-// --- ADMIN DASHBOARD (NOW READS FROM PERSISTENT STORAGE) ---
-function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
-  const [history, setHistory] = useState<any[]>([]);
-
-  // Load history from LocalStorage (Simulated Backend)
-  useEffect(() => {
-    const loadData = () => {
-        const saved = localStorage.getItem('rakshak_history');
-        if (saved) setHistory(JSON.parse(saved));
-    };
-    loadData();
-    // Set up an interval to simulate live polling
-    const interval = setInterval(loadData, 2000); 
-    return () => clearInterval(interval);
-  }, []);
-
-  const clearHistory = () => {
-      localStorage.removeItem('rakshak_history');
-      setHistory([]);
-  };
-
+// --- ADMIN DASHBOARD (CONNECTED PROPERLY) ---
+function AdminDashboard({ onLogout, user, history, clearHistory }: { onLogout: () => void, user: any, history: any[], clearHistory: () => void }) {
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
        <div className="max-w-7xl mx-auto">
@@ -245,12 +226,11 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (TELEGRAM + PERSISTENT LOGS) ---
+// --- USER DASHBOARD (FIXED MAP + HISTORY) ---
 function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: any, addHistory: (log: any) => void }) {
-  // PRE-FILLED WITH YOUR CONTACT FOR TESTING
+  // AUTO-ADD KLAUS (YOUR ID)
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
-    // If empty, auto-add Klaus for instant testing
     if (!saved) {
         return [{ id: 1, name: "Klaus", phone: "0000000000", telegramId: "1958635120" }];
     }
@@ -274,7 +254,7 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- THE SOS PROTOCOL (TELEGRAM ONLY) ---
+  // --- THE SOS PROTOCOL ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
@@ -284,27 +264,25 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Blocked", e));
 
-    // 2. SAVE TO BACKEND (LocalStorage Sync)
+    // 2. SAVE TO BACKEND (SYNC)
     const newLog = {
         time: new Date().toLocaleTimeString(),
         location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
         user: user.email,
         status: "SOS DEPLOYED"
     };
-    addHistory(newLog); // Update parent state
-    // Also update LocalStorage directly to ensure Admin sees it on refresh
-    const currentHistory = JSON.parse(localStorage.getItem('rakshak_history') || "[]");
-    localStorage.setItem('rakshak_history', JSON.stringify([newLog, ...currentHistory]));
+    addHistory(newLog); // Update Parent State (Instant)
 
-    const googleMapsLink = `http://maps.google.com/?q=${location.lat},${location.lng}`;
+    // FIX: PROPER GOOGLE MAPS UNIVERSAL LINK
+    const googleMapsLink = `https://www.google.com/maps?q=${location.lat},${location.lng}`;
     const alertMsg = `🚨 *SOS! CRASH DETECTED!* 🚨\n\n👤 *User:* ${user.email}\n🚀 *Speed:* ${stats.speed.toFixed(0)} km/h\n💥 *G-Force:* ${stats.gForce}g\n\n📍 *LIVE LOCATION:*\n${googleMapsLink}`;
 
     if (contacts.length > 0) {
       const primary = contacts[0];
 
-      // STEP 1: TELEGRAM (Using GET + Debugging)
+      // STEP 1: TELEGRAM
       if (primary.telegramId) {
-        setStatusLog(prev => prev + `\n📡 Targeting ID: ${primary.telegramId}...`);
+        setStatusLog(prev => prev + `\n📡 Sending Data to ID: ${primary.telegramId}...`);
         
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}&parse_mode=Markdown`;
         
@@ -322,7 +300,7 @@ function UserApp({ onLogout, user, addHistory }: { onLogout: () => void, user: a
         setStatusLog(prev => prev + "\n⚠️ SKIPPED TELEGRAM (No ID).");
       }
 
-      // STEP 2: AUTO-RESET (10 Seconds)
+      // STEP 2: AUTO-RESET
       setTimeout(() => {
          setIsSOSActive(false);
          setStatusLog("✅ PROTOCOL COMPLETE. SYSTEM RESET.");
@@ -458,13 +436,12 @@ function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   );
 }
 
-// --- MAIN APP ---
+// --- MAIN APP (CENTRAL STATE) ---
 function App() {
   const [view, setView] = useState('landing'); 
   const [user, setUser] = useState<any>(null); 
   const [isAuthChecking, setIsAuthChecking] = useState(true); 
-  
-  // 1. Initialize State from LocalStorage
+  // STATE LIFTING: Load history once here
   const [history, setHistory] = useState<any[]>(() => {
     const saved = localStorage.getItem('rakshak_history');
     return saved ? JSON.parse(saved) : [];
@@ -487,8 +464,17 @@ function App() {
   const handleAuthSuccess = (role: string, userData: any) => { if (role === 'admin') localStorage.setItem('rakshak_role', 'admin'); setUser(userData); setView(role); };
   const handleLogout = async () => { localStorage.removeItem('rakshak_role'); if(auth) await signOut(auth); setUser(null); setView('landing'); };
   
-  // 2. Helper to add history from UserApp
-  const addHistoryLog = (log: any) => { setHistory(prev => [log, ...prev]); };
+  // UPDATE BOTH STATE AND STORAGE
+  const addHistoryLog = (log: any) => { 
+      const updated = [log, ...history];
+      setHistory(updated);
+      localStorage.setItem('rakshak_history', JSON.stringify(updated));
+  };
+
+  const clearHistory = () => {
+      localStorage.removeItem('rakshak_history');
+      setHistory([]);
+  };
 
   if (isAuthChecking) {
     return (
@@ -503,7 +489,7 @@ function App() {
     <ErrorBoundary>
         {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
         {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
-        {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
+        {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} history={history} clearHistory={clearHistory} />}
         {view === 'user' && <UserApp onLogout={handleLogout} user={user} addHistory={addHistoryLog} />}
     </ErrorBoundary>
   );
