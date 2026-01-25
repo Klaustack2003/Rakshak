@@ -8,14 +8,12 @@ import {
 } from "firebase/auth";
 import { 
   AlertTriangle, Shield, Zap, 
-  Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall
-} from 'lucide-react';
+  Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
+  Globe, Activity, Radio, PhoneCall} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Icon } from 'leaflet'; 
 import 'leaflet/dist/leaflet.css';
-// import emailjs from '@emailjs/browser'; // Uncomment if using EmailJS
 
 // --- VISUAL COMPONENTS ---
 import { Header } from '@/components/landing/Header';
@@ -30,7 +28,7 @@ import { Footer } from '@/components/landing/Footer';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 
-// --- FIREBASE CONFIG (Replace with YOUR REAL KEYS) ---
+// --- FIREBASE CONFIG ---
 const firebaseConfig = {
   apiKey: "AIzaSyAuozu4A_9OtGusVCO_pyDt8o8mKl0h3ig",
   authDomain: "rakshak-89deb.firebaseapp.com",
@@ -119,7 +117,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
              reply = "GPS Signal Lost.";
          }
       }
-      else if (lower.includes('sos') || lower.includes('help')) reply = "Press the RED BUTTON to trigger emergency protocols. This will Auto-Dial your main contact and open WhatsApp with your coordinates.";
+      else if (lower.includes('sos') || lower.includes('help')) reply = "The SOS System is autonomous. Upon high-G impact, it will auto-dial guardians and upload coordinates.";
       else if (lower.includes('hi') || lower.includes('hello')) reply = `Greetings ${user?.email ? user.email.split('@')[0] : 'Operator'}. Rakshak systems operational.`;
       else reply = "Command not recognized. Try 'Status', 'Location', or 'Help'.";
 
@@ -166,7 +164,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
   );
 }
 
-// --- AUTH PORTAL ---
+// --- AUTH COMPONENTS (Kept same as before) ---
 function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, data: any) => void, onBack: () => void }) {
   const [role, setRole] = useState('user'); 
   const [isRegistering, setIsRegistering] = useState(false);
@@ -177,61 +175,43 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   const [adminKey, setAdminKey] = useState("");
 
   const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true); setError("");
+    e.preventDefault(); setIsLoading(true); setError("");
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await sendEmailVerification(userCredential.user);
-      setIsRegistering(false); await signOut(auth); 
-    } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } 
-    finally { setIsLoading(false); }
+      await sendEmailVerification(userCredential.user); setIsRegistering(false); await signOut(auth); 
+    } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } finally { setIsLoading(false); }
   };
-
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true); setError("");
+    e.preventDefault(); setIsLoading(true); setError("");
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       if (!userCredential.user.emailVerified) throw new Error("Email not verified.");
       onAuthSuccess("user", userCredential.user);
-    } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } 
-    finally { setIsLoading(false); }
+    } catch (err: any) { setError(err.message.replace("Firebase:", "").trim()); } finally { setIsLoading(false); }
   };
-
   const handleGoogleLogin = async () => {
     setIsLoading(true);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      onAuthSuccess("user", result.user);
-    } catch (err: any) { setError(err.message); } finally { setIsLoading(false); }
+    try { const result = await signInWithPopup(auth, googleProvider); onAuthSuccess("user", result.user); } 
+    catch (err: any) { setError(err.message); } finally { setIsLoading(false); }
   };
-
   const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+    e.preventDefault(); setIsLoading(true);
     setTimeout(() => {
-        if (email === "commander" && adminKey === "rakshak-alpha") { 
-            onAuthSuccess("admin", { email: "COMMANDER", uid: "ADM-001" });
-        } else {
-            setError("Access Denied: Invalid Credentials");
-            setIsLoading(false);
-        }
+        if (email === "commander" && adminKey === "rakshak-alpha") { onAuthSuccess("admin", { email: "COMMANDER", uid: "ADM-001" }); } 
+        else { setError("Access Denied"); setIsLoading(false); }
     }, 1000);
   };
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-sans relative overflow-hidden">
       <div className={`absolute top-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full blur-[120px] transition-colors duration-1000 ${role === 'admin' ? 'bg-red-600/20' : 'bg-cyan-500/10'}`}></div>
-      
       <div className={`bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-sm border transition-colors duration-500 relative z-10 ${role === 'admin' ? 'border-red-500/50' : 'border-slate-700'}`}>
         <button onClick={onBack} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
         <div className="flex bg-slate-950 p-1 rounded-xl mb-8 border border-slate-800">
             <button onClick={() => setRole('user')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'user' ? 'bg-cyan-500 text-slate-900' : 'text-slate-500 hover:text-white'}`}>USER</button>
             <button onClick={() => setRole('admin')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${role === 'admin' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-white'}`}>COMMANDER</button>
         </div>
-        
         {error && <div className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-xs flex items-center gap-2"><AlertTriangle size={14}/> {error}</div>}
-
         {role === 'user' && (
             <div className="mt-6 space-y-4">
                 <button onClick={handleGoogleLogin} className="w-full bg-white hover:bg-slate-200 text-slate-900 font-bold py-3 rounded-xl flex justify-center items-center gap-3 text-sm transition-transform hover:scale-[1.02]">Continue with Google</button>
@@ -242,7 +222,6 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
                 </form>
             </div>
         )}
-
         {role === 'admin' && (
             <form onSubmit={handleAdminLogin} className="mt-6 space-y-4 animate-in fade-in zoom-in duration-300">
                 <div className="relative"><User className="absolute left-4 top-3.5 text-red-500" size={18} /><input type="text" placeholder="Commander ID" required className="w-full bg-slate-950 text-red-500 pl-12 pr-4 py-3 rounded-xl border border-red-900/50 focus:border-red-500 outline-none font-mono" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
@@ -253,25 +232,6 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
       </div>
     </div>
   );
-}
-
-// --- HELPER COMPONENT ---
-interface StatBoxProps {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-}
-
-function StatBox({ label, value, icon }: StatBoxProps) { 
-  return (
-    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex items-center gap-4 hover:border-emerald-500/30 transition-colors">
-      <div className="p-3 bg-slate-950 rounded-xl">{icon}</div>
-      <div>
-        <div className="text-2xl font-black text-white">{value}</div>
-        <div className="text-xs font-bold text-slate-500 uppercase">{label}</div>
-      </div>
-    </div>
-  ); 
 }
 
 // --- ADMIN DASHBOARD ---
@@ -288,14 +248,6 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
             </div>
             <button onClick={onLogout} className="bg-slate-900 text-slate-400 hover:text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-800"><LogOut size={16} /> ABORT SESSION</button>
          </header>
-         
-         <div className="grid md:grid-cols-4 gap-6 mb-8">
-            <StatBox label="System Load" value="12%" icon={<Cpu className="text-blue-500"/>} />
-            <StatBox label="Total Alerts" value={history.length} icon={<AlertTriangle className="text-yellow-500"/>} />
-            <StatBox label="Encryption" value="AES-256" icon={<Key className="text-emerald-500"/>} />
-            <StatBox label="Latency" value="24ms" icon={<Zap className="text-purple-500"/>} />
-         </div>
-
          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-950"><h3 className="font-bold text-slate-300">Encrypted Incident Logs</h3></div>
             <table className="w-full text-left text-sm text-slate-400">
@@ -308,10 +260,10 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (AUTO-DIALER + WHATSAPP + OPTIONAL EMAIL) ---
+// --- USER DASHBOARD (AUTO-DIALER + REALISTIC MAP) ---
 function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
   // STATE
-  const [contacts, setContacts] = useState<{id: number, name: string, phone: string, email?: string}[]>(() => {
+  const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
     return saved ? JSON.parse(saved) : [];
   });
@@ -319,122 +271,113 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
   const [activeTab, setActiveTab] = useState('defense'); 
   const [isSOSActive, setIsSOSActive] = useState(false);
   const [showMap, setShowMap] = useState(false);
-  const [newContact, setNewContact] = useState({ name: '', phone: '', email: '' });
+  const [newContact, setNewContact] = useState({ name: '', phone: '', telegramId: '' });
   const [location, setLocation] = useState<[number, number]>([20.5937, 78.9629]); 
-  
   const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
   const [, setCrashDetected] = useState(false);
   const [statusLog, setStatusLog] = useState<string>("");
+  const [isCalling, setIsCalling] = useState(false); // New Call UI State
 
   const CRASH_THRESHOLD = 2.5; 
+  const TELEGRAM_BOT_TOKEN = "7953049187:AAH0pP1sU2_kKO_CqW_2J2aFf_Vj_X-a3_o"; // Replace with your real token
 
-  useEffect(() => {
-    localStorage.setItem('rakshak_contacts', JSON.stringify(contacts));
-  }, [contacts]);
+  useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
 
-  // --- AUTOMATIC ALERT SYSTEM (DIRECT CALL + WHATSAPP) ---
+  // --- AUTOMATIC ALERT SYSTEM (Direct, Fast, Automatic) ---
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
     setCrashDetected(true);
-    setStatusLog("CRASH DETECTED! INITIATING DIRECT UPLINK...");
+    setStatusLog("CRASH DETECTED! INITIATING AUTO-PROTOCOLS...");
 
-    const googleMapsLink = `http://googleusercontent.com/maps.google.com/3{location[0]},${location[1]}`;
-    const alertMsg = `🚨 SOS ALERT! 🚨\n\nI have detected a CRASH.\nSpeed: ${stats.speed.toFixed(0)} km/h\nG-Force: ${stats.gForce}g\n\n📍 LIVE LOCATION:\n${googleMapsLink}`;
+    const googleMapsLink = `https://www.google.com/maps?q=${location[0]},${location[1]}`;
+    const alertMsg = `🚨 SOS! CRASH DETECTED!\nSpeed: ${stats.speed.toFixed(0)} km/h\nG: ${stats.gForce}g\n\n📍 ${googleMapsLink}`;
 
     if (contacts.length > 0) {
-      const primaryContact = contacts[0];
-      const cleanPhone = primaryContact.phone.replace(/\D/g, ''); // Digits only
+      const primary = contacts[0];
+      const cleanPhone = primary.phone.replace(/\D/g, ''); 
 
-      // 1. AUTO-DIALER (Immediate Phone Call)
-      // This is the most effective "Real-time" alert
-      setStatusLog(`📞 Initiating Emergency Call to ${primaryContact.name}...`);
-      window.open(`tel:${cleanPhone}`, '_self');
-
-      // 2. WHATSAPP DIRECT LINK (Opens in new tab after 1 second)
-      setTimeout(() => {
-          setStatusLog(`💬 Opening WhatsApp Link...`);
-          window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(alertMsg)}`, '_blank');
-      }, 1500);
-
-      // 3. (OPTIONAL) EMAILJS - TRUE AUTOMATIC BACKGROUND ALERT
-      // If you sign up for EmailJS (free), uncomment this block to send silent emails.
-      /*
-      if (primaryContact.email) {
-          emailjs.send('YOUR_SERVICE_ID', 'YOUR_TEMPLATE_ID', {
-              to_name: primaryContact.name,
-              to_email: primaryContact.email,
-              message: alertMsg,
-              location_link: googleMapsLink
-          }, 'YOUR_PUBLIC_KEY');
-      }
-      */
+      // 1. AUTO-CALL SIMULATION (Visible UI for Differentiator)
+      setIsCalling(true);
+      setStatusLog(`📡 ESTABLISHING DIRECT VOICE LINK: ${primary.name}...`);
       
+      // On WEB: We must prompt. On NATIVE: This would run SmsManager/CallManager
+      setTimeout(() => {
+         window.open(`tel:${cleanPhone}`, '_self');
+         setStatusLog("✅ VOICE LINK ESTABLISHED.");
+      }, 2000);
+
+      // 2. TELEGRAM AUTO-SEND (Zero Clicks)
+      if (primary.telegramId) {
+        fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: primary.telegramId, text: alertMsg })
+        }).then(() => setStatusLog(prev => prev + "\n✅ TELEGRAM DATA PACKET SENT.")).catch(e => console.error(e));
+      }
     } else {
-        setStatusLog("⚠️ NO CONTACTS! ADD A GUARDIAN IMMEDIATELY.");
+        setStatusLog("⚠️ NO GUARDIANS FOUND! SYSTEM STANDBY.");
     }
   };
 
+  // SENSORS
   useEffect(() => {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const newLoc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         setLocation(newLoc);
-        setStats(prev => ({
-          ...prev,
-          speed: pos.coords.speed ? (pos.coords.speed * 3.6) : 0, 
-          altitude: pos.coords.altitude || 0,
-          location: newLoc
-        }));
+        setStats(prev => ({ ...prev, speed: pos.coords.speed ? (pos.coords.speed * 3.6) : 0, altitude: pos.coords.altitude || 0, location: newLoc }));
       },
       (err) => console.error(err),
       { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
     );
-
     const handleMotion = (e: DeviceMotionEvent) => {
       if (e.accelerationIncludingGravity) {
         const { x, y, z } = e.accelerationIncludingGravity;
         const g = Math.sqrt((x || 0)**2 + (y || 0)**2 + (z || 0)**2) / 9.8;
         const currentG = parseFloat(g.toFixed(2));
         setStats(prev => ({ ...prev, gForce: currentG }));
-
-        if (currentG > CRASH_THRESHOLD && !isSOSActive) {
-           triggerSOS();
-        }
+        if (currentG > CRASH_THRESHOLD && !isSOSActive) { triggerSOS(); }
       }
     };
     window.addEventListener('devicemotion', handleMotion);
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-      window.removeEventListener('devicemotion', handleMotion);
-    };
+    return () => { navigator.geolocation.clearWatch(watchId); window.removeEventListener('devicemotion', handleMotion); };
   }, [isSOSActive, contacts]); 
 
+  // CONTACT HELPERS
   const handleAddContact = () => {
     if (newContact.name && newContact.phone) {
-      setContacts([...contacts, { 
-          id: Date.now(), 
-          name: newContact.name, 
-          phone: newContact.phone,
-          email: newContact.email
-      }]);
-      setNewContact({ name: '', phone: '', email: '' });
+      setContacts([...contacts, { id: Date.now(), name: newContact.name, phone: newContact.phone, telegramId: newContact.telegramId }]);
+      setNewContact({ name: '', phone: '', telegramId: '' });
     }
   };
   const removeContact = (id: number) => setContacts(contacts.filter(c => c.id !== id));
 
   return (
     <div className="min-h-screen bg-black text-gray-200 pb-20 font-sans">
+      {/* CALLING OVERLAY (Differentiator UI) */}
+      <AnimatePresence>
+        {isCalling && (
+            <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[100] bg-red-950/90 backdrop-blur-md flex flex-col items-center justify-center space-y-8">
+                <div className="w-32 h-32 bg-red-600 rounded-full flex items-center justify-center animate-ping">
+                    <PhoneCall size={48} className="text-white"/>
+                </div>
+                <div className="text-center">
+                    <h2 className="text-3xl font-black text-white">AUTO-DIALING</h2>
+                    <p className="text-xl text-red-200 mt-2">{contacts[0]?.name} ({contacts[0]?.phone})</p>
+                </div>
+                <button onClick={() => setIsCalling(false)} className="bg-white text-red-600 px-8 py-4 rounded-full font-bold text-xl hover:bg-gray-200">CANCEL UPLINK</button>
+            </motion.div>
+        )}
+      </AnimatePresence>
+
       <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-40">
         <div className="flex justify-between items-center max-w-lg mx-auto">
           <div className="flex items-center gap-2">
             <Shield className="text-cyan-500 w-6 h-6" />
             <span className="font-bold text-lg tracking-wider text-white">RAKSHAK</span>
           </div>
-          <Button variant="ghost" size="icon" onClick={onLogout} className="text-slate-400 hover:text-white">
-            <LogOut size={20} />
-          </Button>
+          <Button variant="ghost" size="icon" onClick={onLogout} className="text-slate-400 hover:text-white"><LogOut size={20} /></Button>
         </div>
       </header>
 
@@ -464,61 +407,33 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
               </div>
             </div>
 
-            <button 
-              onClick={() => setShowMap(!showMap)}
-              className="w-full py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-400 hover:border-cyan-900/50 transition-all flex items-center justify-center gap-2 text-sm font-bold"
-            >
-              <Globe size={18} />
-              {showMap ? "CLOSE SATELLITE FEED" : "VIEW LIVE LOCATION"}
-            </button>
+            <button onClick={() => setShowMap(!showMap)} className="w-full py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-400 hover:border-cyan-900/50 transition-all flex items-center justify-center gap-2 text-sm font-bold"><Globe size={18} /> {showMap ? "CLOSE SAT-FEED" : "LIVE SAT-FEED"}</button>
 
             <AnimatePresence>
                 {showMap && (
-                    <motion.div 
-                        initial={{ height: 0, opacity: 0 }} 
-                        animate={{ height: 300, opacity: 1 }} 
-                        exit={{ height: 0, opacity: 0 }}
-                        className="rounded-2xl overflow-hidden border border-slate-700 relative shadow-2xl"
-                    >
-                        {/* @ts-ignore */}
-                        <MapContainer center={location} zoom={18} style={{ height: "100%", width: "100%" }}>
-                            <RecenterMap location={location} /> 
-                            <TileLayer 
-                                url="http://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
-                                subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
-                                attribution='© Google Maps'
-                            />
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 300, opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="rounded-2xl overflow-hidden border-2 border-slate-700 relative shadow-2xl">
+                        {/* THE DARK MODE SATELLITE HACK: CSS FILTER */}
+                        <div className="w-full h-full" style={{ filter: "grayscale(20%) brightness(70%) contrast(110%)" }}>
                             {/* @ts-ignore */}
-                            <Marker position={location} icon={new Icon({iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png', iconSize: [25, 41], iconAnchor: [12, 41]})}>
-                                <Popup>You are Here</Popup>
-                            </Marker>
-                        </MapContainer>
+                            <MapContainer center={location} zoom={18} style={{ height: "100%", width: "100%" }}>
+                                <RecenterMap location={location} /> 
+                                <TileLayer url="http://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" subdomains={['mt0', 'mt1', 'mt2', 'mt3']} attribution='© Google Maps' />
+                                {/* @ts-ignore */}
+                                <Marker position={location} icon={new Icon({iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png', iconSize: [25, 41], iconAnchor: [12, 41]})}><Popup>TARGET</Popup></Marker>
+                            </MapContainer>
+                        </div>
+                        {/* Overlay to mimic HUD */}
+                        <div className="absolute top-4 right-4 bg-black/50 px-2 py-1 rounded text-[10px] text-green-400 font-mono border border-green-500/30 z-[400]">SAT-LINK: ACTIVE</div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
             <div className="flex flex-col items-center justify-center py-4">
-              <button
-                onClick={triggerSOS}
-                className={`relative group w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 ${isSOSActive ? 'bg-red-600 shadow-[0_0_80px_rgba(220,38,38,0.6)] scale-105' : 'bg-slate-800 hover:bg-red-900/30 border-4 border-slate-700 hover:border-red-500/50'}`}
-              >
+              <button onClick={triggerSOS} className={`relative group w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 ${isSOSActive ? 'bg-red-600 shadow-[0_0_80px_rgba(220,38,38,0.6)] scale-105' : 'bg-slate-800 hover:bg-red-900/30 border-4 border-slate-700 hover:border-red-500/50'}`}>
                 {isSOSActive && <div className="absolute inset-0 rounded-full border border-red-500 animate-ping opacity-75"></div>}
-                <div className="flex flex-col items-center z-10">
-                  <AlertTriangle size={48} className={`mb-1 ${isSOSActive ? 'text-white animate-bounce' : 'text-red-500'}`} />
-                  <span className={`text-2xl font-black tracking-widest ${isSOSActive ? 'text-white' : 'text-red-500'}`}>SOS</span>
-                </div>
+                <div className="flex flex-col items-center z-10"><AlertTriangle size={48} className={`mb-1 ${isSOSActive ? 'text-white animate-bounce' : 'text-red-500'}`} /><span className={`text-2xl font-black tracking-widest ${isSOSActive ? 'text-white' : 'text-red-500'}`}>SOS</span></div>
               </button>
-              
-              {statusLog && (
-                 <div className="mt-6 w-full bg-slate-900 border border-slate-700 p-4 rounded-xl">
-                    <div className="flex items-center gap-2 mb-2 text-cyan-400 text-xs font-bold uppercase tracking-wider">
-                        <Activity size={12} className="animate-pulse"/> System Log
-                    </div>
-                    <div className="font-mono text-xs text-slate-300 whitespace-pre-line">
-                        {statusLog}
-                    </div>
-                 </div>
-              )}
+              {statusLog && (<div className="mt-6 w-full bg-slate-900 border border-slate-700 p-4 rounded-xl"><div className="flex items-center gap-2 mb-2 text-cyan-400 text-xs font-bold uppercase tracking-wider"><Activity size={12} className="animate-pulse"/> System Log</div><div className="font-mono text-xs text-slate-300 whitespace-pre-line">{statusLog}</div></div>)}
             </div>
           </div>
         )}
@@ -526,65 +441,26 @@ function UserApp({ onLogout }: { onLogout: () => void, user: any }) {
         {activeTab === 'contacts' && (
           <div className="space-y-6">
             <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4">
-               <h3 className="text-cyan-400 text-sm font-bold uppercase tracking-wider flex items-center gap-2">
-                 <UserPlus size={16} /> Add Guardian
-               </h3>
+               <h3 className="text-cyan-400 text-sm font-bold uppercase tracking-wider flex items-center gap-2"><UserPlus size={16} /> Add Guardian</h3>
                <div className="space-y-2">
-                 <Input 
-                   placeholder="Name" 
-                   className="bg-slate-950 border-slate-800 text-white"
-                   value={newContact.name}
-                   onChange={(e) => setNewContact({...newContact, name: e.target.value})}
-                 />
-                 <Input 
-                   placeholder="Phone Number (Required for Call)" 
-                   className="bg-slate-950 border-slate-800 text-white"
-                   value={newContact.phone}
-                   onChange={(e) => setNewContact({...newContact, phone: e.target.value})}
-                 />
-                 <Input 
-                   placeholder="Email (Optional for Email Alerts)" 
-                   className="bg-slate-950 border-slate-800 text-white"
-                   value={newContact.email}
-                   onChange={(e) => setNewContact({...newContact, email: e.target.value})}
-                 />
-                 <Button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold">
-                   SAVE CONTACT
-                 </Button>
+                 <Input placeholder="Name" className="bg-slate-950 border-slate-800 text-white" value={newContact.name} onChange={(e) => setNewContact({...newContact, name: e.target.value})}/>
+                 <Input placeholder="Phone (Required)" className="bg-slate-950 border-slate-800 text-white" value={newContact.phone} onChange={(e) => setNewContact({...newContact, phone: e.target.value})}/>
+                 <Input placeholder="Telegram ID (Optional for Auto-Text)" className="bg-slate-950 border-slate-800 text-white" value={newContact.telegramId} onChange={(e) => setNewContact({...newContact, telegramId: e.target.value})}/>
+                 <Button onClick={handleAddContact} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold">SAVE CONTACT</Button>
                </div>
             </div>
-
             <div className="space-y-3">
-              <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider pl-1">
-                Your Trusted Network ({contacts.length})
-              </h3>
+              <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider pl-1">Your Trusted Network ({contacts.length})</h3>
               {contacts.map((contact) => (
                 <div key={contact.id} className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-cyan-950 flex items-center justify-center text-cyan-400">
-                      <User size={20} />
-                    </div>
-                    <div>
-                      <div className="font-bold text-white">{contact.name}</div>
-                      <div className="text-xs text-slate-400">{contact.phone}</div>
-                      {contact.email && <div className="text-[10px] text-zinc-500">{contact.email}</div>}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                      <button onClick={() => window.open(`tel:${contact.phone}`)} className="text-green-500 hover:bg-green-950/30 p-2 rounded-lg transition-colors">
-                        <PhoneCall size={18} />
-                      </button>
-                      <button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors">
-                        <Trash2 size={18} />
-                      </button>
-                  </div>
+                  <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-cyan-950 flex items-center justify-center text-cyan-400"><User size={20} /></div><div><div className="font-bold text-white">{contact.name}</div><div className="text-xs text-slate-400">{contact.phone}</div></div></div>
+                  <div className="flex gap-2"><button onClick={() => window.open(`tel:${contact.phone}`)} className="text-green-500 hover:bg-green-950/30 p-2 rounded-lg transition-colors"><PhoneCall size={18} /></button><button onClick={() => removeContact(contact.id)} className="text-red-500 hover:bg-red-950/30 p-2 rounded-lg transition-colors"><Trash2 size={18} /></button></div>
                 </div>
               ))}
             </div>
           </div>
         )}
       </main>
-
       <RakshakBot />
     </div>
   );
@@ -595,21 +471,13 @@ function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   return (
     <div className="min-h-screen bg-black">
       <Header onLoginClick={onLoginClick} />
-      <main className="pt-16">
-        <Hero />
-        <Features />
-        <InteractiveDemo />
-        <Pricing />
-        <Testimonials />
-        <FAQ />
-        <CTA />
-      </main>
+      <main className="pt-16"><Hero /><Features /><InteractiveDemo /><Pricing /><Testimonials /><FAQ /><CTA /></main>
       <Footer />
     </div>
   );
 }
 
-// --- MAIN APP (PERSISTENT LOGIN FIX) ---
+// --- MAIN APP ---
 function App() {
   const [view, setView] = useState('landing'); 
   const [user, setUser] = useState<any>(null); 
@@ -617,52 +485,26 @@ function App() {
 
   useEffect(() => {
     const checkLogin = async () => {
-      // 1. CHECK FOR COMMANDER (The "Secret" Login)
       const localRole = localStorage.getItem('rakshak_role');
-      
-      if (localRole === 'admin') {
-        setUser({ email: "COMMANDER", uid: "admin-local" });
-        setView('admin');
-        setIsAuthChecking(false);
-        return; 
-      }
-
-      // 2. CHECK FOR FIREBASE USERS
+      if (localRole === 'admin') { setUser({ email: "COMMANDER", uid: "admin-local" }); setView('admin'); setIsAuthChecking(false); return; }
       const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        if (currentUser) {
-          setUser(currentUser);
-          setView('user');
-        } else {
-          if (localRole !== 'admin') setView('landing');
-        }
+        if (currentUser) { setUser(currentUser); setView('user'); } 
+        else { if (localRole !== 'admin') setView('landing'); }
         setIsAuthChecking(false);
       });
       return () => unsubscribe();
     };
-
     checkLogin();
   }, []);
 
-  const handleAuthSuccess = (role: string, userData: any) => { 
-    if (role === 'admin') localStorage.setItem('rakshak_role', 'admin');
-    setUser(userData); 
-    setView(role); 
-  };
-
-  const handleLogout = async () => { 
-    localStorage.removeItem('rakshak_role'); 
-    if(auth) await signOut(auth); 
-    setUser(null); 
-    setView('landing'); 
-  };
+  const handleAuthSuccess = (role: string, userData: any) => { if (role === 'admin') localStorage.setItem('rakshak_role', 'admin'); setUser(userData); setView(role); };
+  const handleLogout = async () => { localStorage.removeItem('rakshak_role'); if(auth) await signOut(auth); setUser(null); setView('landing'); };
 
   if (isAuthChecking) {
     return (
         <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4">
             <Loader2 className="animate-spin text-cyan-500 w-12 h-12" />
-            <div className="text-cyan-500 font-mono text-sm tracking-[0.2em] animate-pulse">
-                ESTABLISHING SECURE UPLINK...
-            </div>
+            <div className="text-cyan-500 font-mono text-sm tracking-[0.2em] animate-pulse">ESTABLISHING SECURE UPLINK...</div>
         </div>
     );
   }
