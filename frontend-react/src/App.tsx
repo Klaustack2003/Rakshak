@@ -9,7 +9,7 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, CheckCircle, MapPin
+  Globe, Activity, Radio, PhoneCall, CheckCircle, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -195,26 +195,20 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   );
 }
 
-// --- ADMIN DASHBOARD (FIXED: LIVE UPDATES) ---
+// --- ADMIN DASHBOARD (DIRECT DATABASE READER) ---
 function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [history, setHistory] = useState<any[]>([]);
 
-  // AUTO-REFRESH HISTORY EVERY SECOND
+  // AUTO-POLLING DATABASE (LocalStorage)
   useEffect(() => {
-    const fetchHistory = () => {
+    const fetchData = () => {
         const saved = localStorage.getItem('rakshak_history');
         if (saved) {
-            const parsed = JSON.parse(saved);
-            // Sort by latest first
-            setHistory(parsed);
+            setHistory(JSON.parse(saved));
         }
     };
-    
-    // Initial fetch
-    fetchHistory();
-    
-    // Set up live polling
-    const interval = setInterval(fetchHistory, 1000); 
+    fetchData(); // Initial load
+    const interval = setInterval(fetchData, 1000); // Check every 1s for updates
     return () => clearInterval(interval);
   }, []);
 
@@ -234,7 +228,9 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
             <div className="flex justify-between items-center p-6 border-b border-slate-800 bg-slate-950">
                 <h3 className="font-bold text-slate-300">Live Incident Stream</h3>
                 <div className="flex items-center gap-4">
-                    <div className="text-xs text-emerald-500 animate-pulse font-mono">LIVE FEED ACTIVE</div>
+                    <div className="flex items-center gap-2 text-xs text-emerald-500 animate-pulse font-mono">
+                        <RefreshCw size={12} className="animate-spin" /> DATABASE SYNCING
+                    </div>
                     <button onClick={clearHistory} className="text-xs text-red-500 hover:text-white underline">Clear Logs</button>
                 </div>
             </div>
@@ -252,12 +248,12 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (TELEGRAM + MAP FIX) ---
+// --- USER DASHBOARD (DIRECT DATABASE WRITER) ---
 function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
+  // AUTO-ADD KLAUS (YOUR ID)
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
     if (!saved) {
-        // Pre-fill with your ID so you don't have to type it
         return [{ id: 1, name: "Klaus", phone: "0000000000", telegramId: "1958635120" }];
     }
     return JSON.parse(saved);
@@ -275,6 +271,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
 
   const CRASH_THRESHOLD = 2.5; 
+  // YOUR TOKEN
   const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
@@ -289,7 +286,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Blocked", e));
 
-    // 2. SAVE TO BACKEND (Direct LocalStorage Write)
+    // 2. WRITE TO DATABASE (LOCALSTORAGE)
     const newLog = {
         time: new Date().toLocaleTimeString(),
         location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
@@ -297,33 +294,28 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
         status: "SOS DEPLOYED"
     };
     
-    // Get existing, add new, save back
+    // Direct Write ensures data exists before Admin loads
     const existingHistory = JSON.parse(localStorage.getItem('rakshak_history') || "[]");
     localStorage.setItem('rakshak_history', JSON.stringify([newLog, ...existingHistory]));
 
-    // 3. FIXED GOOGLE MAPS LINK
-    const googleMapsLink = `https://www.google.com/maps?q=${location.lat},${location.lng}`;
+    // 3. TELEGRAM ALERT
+    const googleMapsLink = `https://www.google.com/maps?q=lat,lng{location.lat},${location.lng}`;
     const alertMsg = `🚨 *SOS! CRASH DETECTED!* 🚨\n\n👤 *User:* ${user.email}\n🚀 *Speed:* ${stats.speed.toFixed(0)} km/h\n💥 *G-Force:* ${stats.gForce}g\n\n📍 *LIVE LOCATION:*\n${googleMapsLink}`;
 
     if (contacts.length > 0) {
       const primary = contacts[0];
 
-      // STEP 1: TELEGRAM
       if (primary.telegramId) {
         setStatusLog(prev => prev + `\n📡 Sending to ID: ${primary.telegramId}...`);
-        
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}&parse_mode=Markdown`;
         
         fetch(url)
         .then(res => res.json())
         .then(data => {
-            if(data.ok) {
-                setStatusLog(prev => prev + "\n✅ TELEGRAM SENT SUCCESSFULLY!");
-            } else {
-                setStatusLog(prev => prev + `\n❌ TELEGRAM ERROR: ${data.description}`);
-            }
+            if(data.ok) setStatusLog(prev => prev + "\n✅ TELEGRAM SENT SUCCESSFULLY!");
+            else setStatusLog(prev => prev + `\n❌ TELEGRAM ERROR: ${data.description}`);
         })
-        .catch(err => setStatusLog(prev => prev + "\n❌ NETWORK ERROR: Check Connection."));
+        .catch(err => setStatusLog(prev => prev + "\n❌ NETWORK ERROR."));
       } else {
         setStatusLog(prev => prev + "\n⚠️ SKIPPED TELEGRAM (No ID).");
       }
