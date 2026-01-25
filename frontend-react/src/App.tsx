@@ -4,12 +4,11 @@ import { initializeApp } from "firebase/app";
 import { 
   getAuth, signInWithPopup, GoogleAuthProvider, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword, 
-  sendEmailVerification, signOut, onAuthStateChanged, User as FirebaseUser 
-} from "firebase/auth";
+  sendEmailVerification, signOut, onAuthStateChanged} from "firebase/auth";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { 
   AlertTriangle, Shield, Navigation, Zap, Gauge, 
-  Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut 
+  Cpu, Key, Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut
 } from 'lucide-react';
 
 // --- VISUAL COMPONENTS ---
@@ -23,7 +22,7 @@ import { FAQ } from '@/components/landing/FAQ';
 import { CTA } from '@/components/landing/CTA';
 import { Footer } from '@/components/landing/Footer';
 
-// --- 🔥 FIREBASE CONFIGURATION ---
+// --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
   apiKey: "AIzaSyAuozu4A_9OtGusVCO_pyDt8o8mKl0h3ig",
   authDomain: "rakshak-89deb.firebaseapp.com",
@@ -79,7 +78,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 // --- RAKSHAK BOT ---
 function RakshakBot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([{ sender: 'bot', text: '🟢 Rakshak Neural Link Established.' }]);
+  const [messages, setMessages] = useState([{ sender: 'bot', text: 'Rakshak Neural Link Established.' }]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -333,7 +332,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
               const totalForce = Math.sqrt(x*x + y*y + z*z); 
               const impactForce = Math.abs(totalForce - 9.8); 
               setAcceleration(Number(impactForce.toFixed(1))); 
-              if (impactForce > CRASH_G_FORCE && sosStatus === 'idle') handleSOS(`🚨 AUTO-CRASH: ${impactForce.toFixed(1)}G`); 
+              if (impactForce > CRASH_G_FORCE && sosStatus === 'idle') handleSOS(`AUTO-CRASH: ${impactForce.toFixed(1)}G`); 
           }; 
           window.addEventListener('devicemotion', handleMotion); 
           return () => window.removeEventListener('devicemotion', handleMotion); 
@@ -395,43 +394,78 @@ function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   );
 }
 
-// --- MAIN APP (FINAL INTEGRATION) ---
+// --- MAIN APP (PERSISTENT LOGIN FIX) ---
 function App() {
   const [view, setView] = useState('landing'); 
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [isLoading, setIsLoading] = useState(!!auth); 
+  const [user, setUser] = useState<any>(null); // Changed type to 'any' to handle the Commander object
+  const [isAuthChecking, setIsAuthChecking] = useState(true); 
 
   useEffect(() => {
-    if (!auth) return;
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        if (currentUser) {
-            if (currentUser.emailVerified && (view === 'landing' || view === 'auth')) {
-                setUser(currentUser as FirebaseUser);
-                setView('user');
-            }
-        }
-        setIsLoading(false); 
-    });
-    return () => unsubscribe();
-  }, [view]);
+    const checkLogin = async () => {
+      // 1. CHECK FOR COMMANDER (The "Secret" Login)
+      const localRole = localStorage.getItem('rakshak_role');
+      
+      if (localRole === 'admin') {
+        // Manually restore the Commander session
+        setUser({ email: "COMMANDER", uid: "admin-local" });
+        setView('admin');
+        setIsAuthChecking(false);
+        return; // Stop here, we are done
+      }
 
-  const handleAuthSuccess = (role: string, userData: any) => { setUser(userData); setView(role); };
-  const handleLogout = async () => { if(auth) await signOut(auth); setUser(null); setView('landing'); };
+      // 2. CHECK FOR FIREBASE USERS (Regular People)
+      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        if (currentUser) {
+          setUser(currentUser);
+          setView('user');
+        } else {
+          // Only go to landing if we aren't already an admin
+          if (localRole !== 'admin') {
+            setView('landing');
+          }
+        }
+        setIsAuthChecking(false);
+      });
+      return () => unsubscribe();
+    };
+
+    checkLogin();
+  }, []);
+
+  // UPDATED: Save to Local Storage when logging in
+  const handleAuthSuccess = (role: string, userData: any) => { 
+    if (role === 'admin') {
+      localStorage.setItem('rakshak_role', 'admin');
+    }
+    setUser(userData); 
+    setView(role); 
+  };
+
+  // UPDATED: Clear Local Storage when logging out
+  const handleLogout = async () => { 
+    localStorage.removeItem('rakshak_role'); // Forget the commander
+    if(auth) await signOut(auth); 
+    setUser(null); 
+    setView('landing'); 
+  };
+
+  if (isAuthChecking) {
+    return (
+        <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4">
+            <Loader2 className="animate-spin text-cyan-500 w-12 h-12" />
+            <div className="text-cyan-500 font-mono text-sm tracking-[0.2em] animate-pulse">
+                ESTABLISHING SECURE UPLINK...
+            </div>
+        </div>
+    );
+  }
 
   return (
     <ErrorBoundary>
-        {isLoading ? (
-            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-                <Loader2 className="animate-spin text-cyan-500" size={32} />
-            </div>
-        ) : (
-            <>
-              {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
-              {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
-              {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
-              {view === 'user' && <UserApp onLogout={handleLogout} user={user} />}
-            </>
-        )}
+        {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
+        {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
+        {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
+        {view === 'user' && <UserApp onLogout={handleLogout} user={user} />}
     </ErrorBoundary>
   );
 }
