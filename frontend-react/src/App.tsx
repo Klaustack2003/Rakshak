@@ -6,10 +6,14 @@ import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, 
   signOut, onAuthStateChanged
 } from "firebase/auth";
+// IMPORT FIRESTORE
+import { 
+  getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp 
+} from "firebase/firestore";
 import { 
   AlertTriangle, Shield, Zap, 
   Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall, CheckCircle, RefreshCw
+  Globe, Activity, Radio, PhoneCall, CheckCircle, Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -30,7 +34,7 @@ import { Footer } from '@/components/landing/Footer';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 
-// --- FIREBASE CONFIG ---
+// --- FIREBASE CONFIG (YOURS) ---
 const firebaseConfig = {
   apiKey: "AIzaSyAuozu4A_9OtGusVCO_pyDt8o8mKl0h3ig",
   authDomain: "rakshak-89deb.firebaseapp.com",
@@ -40,10 +44,12 @@ const firebaseConfig = {
   appId: "1:101062187555:web:5d4b6aaa1f420c4e366f96"
 };
 
-let app, auth: any, googleProvider: any;
+// INITIALIZE FIREBASE & FIRESTORE
+let app, auth: any, googleProvider: any, db: any;
 try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
+    db = getFirestore(app); // Init Firestore
     googleProvider = new GoogleAuthProvider();
 } catch (e) {
     console.error("Firebase Init Error:", e);
@@ -195,27 +201,26 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   );
 }
 
-// --- ADMIN DASHBOARD (DIRECT DATABASE READER) ---
+// --- ADMIN DASHBOARD (CONNECTED TO FIRESTORE) ---
 function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [history, setHistory] = useState<any[]>([]);
 
-  // AUTO-POLLING DATABASE (LocalStorage)
+  // REAL-TIME FIRESTORE LISTENER
   useEffect(() => {
-    const fetchData = () => {
-        const saved = localStorage.getItem('rakshak_history');
-        if (saved) {
-            setHistory(JSON.parse(saved));
-        }
-    };
-    fetchData(); // Initial load
-    const interval = setInterval(fetchData, 1000); // Check every 1s for updates
-    return () => clearInterval(interval);
-  }, []);
+    // This connects to the "incidents" collection in your Cloud Firestore
+    const q = query(collection(db, "incidents"), orderBy("timestamp", "desc"));
+    
+    // onSnapshot creates a live connection. When DB changes, this runs instantly.
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const incidents = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        setHistory(incidents);
+    });
 
-  const clearHistory = () => {
-      localStorage.removeItem('rakshak_history');
-      setHistory([]);
-  };
+    return () => unsubscribe();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 font-sans overflow-y-auto border-t-4 border-red-600">
@@ -226,20 +231,24 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
          </header>
          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center p-6 border-b border-slate-800 bg-slate-950">
-                <h3 className="font-bold text-slate-300">Live Incident Stream</h3>
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 text-xs text-emerald-500 animate-pulse font-mono">
-                        <RefreshCw size={12} className="animate-spin" /> DATABASE SYNCING
-                    </div>
-                    <button onClick={clearHistory} className="text-xs text-red-500 hover:text-white underline">Clear Logs</button>
+                <h3 className="font-bold text-slate-300">Live Incident Stream (Cloud Sync)</h3>
+                <div className="flex items-center gap-2 text-xs text-emerald-500 animate-pulse font-mono">
+                    <Database size={12} /> SECURE UPLINK ACTIVE
                 </div>
             </div>
             {history.length === 0 ? (
-                <div className="p-12 text-center text-slate-600 text-sm font-mono">NO ACTIVE INCIDENTS DETECTED.<br/>SYSTEM STANDBY.</div>
+                <div className="p-12 text-center text-slate-600 text-sm font-mono">NO INCIDENTS REPORTED IN CLOUD DATABASE.</div>
             ) : (
                 <table className="w-full text-left text-sm text-slate-400">
-                    <thead className="bg-slate-900 text-xs uppercase font-bold text-slate-500"><tr><th className="p-4">Time</th><th className="p-4">Location</th><th className="p-4">User ID</th><th className="p-4">Status</th></tr></thead>
-                    <tbody className="divide-y divide-slate-800">{history.map((log, i) => (<tr key={i} className="hover:bg-slate-800/50 animate-in fade-in slide-in-from-left-4"><td className="p-4 font-mono text-emerald-500">{log.time}</td><td className="p-4 font-mono">{log.location}</td><td className="p-4 text-white">{log.user}</td><td className="p-4 font-bold text-red-500 flex items-center gap-2"><AlertTriangle size={14}/> {log.status}</td></tr>))}</tbody>
+                    <thead className="bg-slate-900 text-xs uppercase font-bold text-slate-500"><tr><th className="p-4">Time</th><th className="p-4">Coordinates</th><th className="p-4">User</th><th className="p-4">Status</th></tr></thead>
+                    <tbody className="divide-y divide-slate-800">{history.map((log) => (
+                        <tr key={log.id} className="hover:bg-slate-800/50 animate-in fade-in slide-in-from-left-4">
+                            <td className="p-4 font-mono text-emerald-500">{log.timeDisplay}</td>
+                            <td className="p-4 font-mono text-xs">{log.gpsLink}</td>
+                            <td className="p-4 text-white">{log.user}</td>
+                            <td className="p-4 font-bold text-red-500 flex items-center gap-2"><AlertTriangle size={14}/> {log.status}</td>
+                        </tr>
+                    ))}</tbody>
                 </table>
             )}
          </div>
@@ -248,9 +257,8 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (DIRECT DATABASE WRITER) ---
+// --- USER DASHBOARD (WRITES TO FIRESTORE) ---
 function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
-  // AUTO-ADD KLAUS (YOUR ID)
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
     if (!saved) {
@@ -267,11 +275,9 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
   const [statusLog, setStatusLog] = useState<string>("");
 
-  // LOAD GOOGLE MAPS
   const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
 
   const CRASH_THRESHOLD = 2.5; 
-  // YOUR TOKEN
   const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
@@ -280,23 +286,35 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
-    setStatusLog("CRASH DETECTED! INITIATING TELEGRAM UPLINK...");
+    setStatusLog("CRASH DETECTED! UPLOADING TO CLOUD...");
 
     // 1. SOUND SIREN
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Blocked", e));
 
-    // 2. WRITE TO DATABASE (LOCALSTORAGE)
-    const newLog = {
-        time: new Date().toLocaleTimeString(),
-        location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
-        user: user.email,
-        status: "SOS DEPLOYED"
-    };
-    
-    // Direct Write ensures data exists before Admin loads
-    const existingHistory = JSON.parse(localStorage.getItem('rakshak_history') || "[]");
-    localStorage.setItem('rakshak_history', JSON.stringify([newLog, ...existingHistory]));
+    // 2. WRITE TO FIREBASE (REAL BACKEND)
+    try {
+        await addDoc(collection(db, "incidents"), {
+            user: user.email,
+            gpsLink: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
+            status: "CRASH DETECTED",
+            timeDisplay: new Date().toLocaleTimeString(),
+            timestamp: serverTimestamp() // Used for sorting
+        });
+        setStatusLog(prev => prev + "\n✅ CLOUD UPLOAD COMPLETE.");
+    } catch (e) {
+        setStatusLog(prev => prev + "\n❌ CLOUD ERROR: " + e);
+        // Fallback to LocalStorage if Cloud fails
+        const newLog = {
+            id: Date.now(),
+            user: user.email,
+            gpsLink: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
+            status: "OFFLINE CRASH",
+            timeDisplay: new Date().toLocaleTimeString()
+        };
+        const existing = JSON.parse(localStorage.getItem('rakshak_history') || "[]");
+        localStorage.setItem('rakshak_history', JSON.stringify([newLog, ...existing]));
+    }
 
     // 3. TELEGRAM ALERT
     const googleMapsLink = `https://www.google.com/maps?q=lat,lng{location.lat},${location.lng}`;
@@ -304,30 +322,15 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
 
     if (contacts.length > 0) {
       const primary = contacts[0];
-
       if (primary.telegramId) {
-        setStatusLog(prev => prev + `\n📡 Sending to ID: ${primary.telegramId}...`);
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}&parse_mode=Markdown`;
-        
-        fetch(url)
-        .then(res => res.json())
-        .then(data => {
-            if(data.ok) setStatusLog(prev => prev + "\n✅ TELEGRAM SENT SUCCESSFULLY!");
-            else setStatusLog(prev => prev + `\n❌ TELEGRAM ERROR: ${data.description}`);
-        })
-        .catch(err => setStatusLog(prev => prev + "\n❌ NETWORK ERROR."));
-      } else {
-        setStatusLog(prev => prev + "\n⚠️ SKIPPED TELEGRAM (No ID).");
+        fetch(url).then(res => res.json()).then(data => {
+            if(data.ok) setStatusLog(prev => prev + "\n✅ TELEGRAM SENT!");
+            else setStatusLog(prev => prev + `\n❌ TELEGRAM ERROR.`);
+        });
       }
-
-      // STEP 2: AUTO-RESET
-      setTimeout(() => {
-         setIsSOSActive(false);
-         setStatusLog("✅ PROTOCOL COMPLETE. SYSTEM RESET.");
-      }, 10000); 
-
+      setTimeout(() => { setIsSOSActive(false); setStatusLog("✅ SYSTEM RESET."); }, 10000); 
     } else {
-        setStatusLog("⚠️ NO GUARDIANS FOUND! SYSTEM STANDBY.");
         setTimeout(() => setIsSOSActive(false), 3000);
     }
   };
