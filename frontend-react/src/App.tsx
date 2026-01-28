@@ -12,25 +12,51 @@ import {
 import { 
   AlertTriangle, Shield, Zap, 
   Loader2, User, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, CheckCircle, Database, Navigation, 
+  Globe, Activity, CheckCircle, Database, Navigation, 
   Server, Signal, MapPin, AlertOctagon, Smartphone, MessageCircle, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
 import 'leaflet/dist/leaflet.css';
 import { GoogleMap, useLoadScript, MarkerF } from '@react-google-maps/api';
 
-// --- UI COMPONENTS (INLINE TO PREVENT IMPORT ERRORS) ---
-const Button = ({ children, onClick, className, variant = 'primary' }: any) => {
-  const baseStyle = "px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 text-sm tracking-wide";
+// --- UI COMPONENTS (FIXED BUTTON & INPUT) ---
+
+// FIXED: Now supports 'size' prop to fix the TypeScript error
+const Button = ({ children, onClick, className, variant = 'primary', size = 'default' }: { 
+  children: React.ReactNode; 
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void; 
+  className?: string; 
+  variant?: 'primary' | 'ghost' | 'danger';
+  size?: 'default' | 'icon'; 
+}) => {
+  // Base styles
+  const baseStyle = "rounded-lg font-bold transition-all flex items-center justify-center gap-2 text-sm tracking-wide";
+  
+  // Color Variants
   const variants = {
     primary: "bg-cyan-700 hover:bg-cyan-600 text-white shadow-lg shadow-cyan-900/20",
     ghost: "bg-transparent hover:bg-slate-800 text-slate-400 hover:text-white",
     danger: "bg-red-700 hover:bg-red-600 text-white"
   };
-  return <button onClick={onClick} className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${className}`}>{children}</button>;
+
+  // Size Variants (The Fix)
+  const sizes = {
+    default: "px-6 py-3",
+    icon: "p-2 w-10 h-10" // Perfect square for icons
+  };
+
+  const sizeClass = sizes[size] || sizes.default;
+
+  return <button onClick={onClick} className={`${baseStyle} ${variants[variant]} ${sizeClass} ${className || ''}`}>{children}</button>;
 };
 
-const Input = ({ placeholder, value, onChange, className }: any) => (
+// FIXED: Input with explicit ChangeEvent type
+const Input = ({ placeholder, value, onChange, className }: { 
+  placeholder: string; 
+  value: string; 
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; 
+  className?: string; 
+}) => (
   <input 
     type="text" 
     placeholder={placeholder} 
@@ -299,7 +325,6 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     audio.play().catch(e => console.log("Audio Auto-play Blocked", e));
 
     // 2. BACKEND PAYLOAD (NO ALTITUDE TO PREVENT DJANGO ERROR)
-    // We match the Django Model exactly to ensure the record is saved.
     const payload = {
         userEmail: user.email,
         latitude: parseFloat(location.lat.toFixed(7)),
@@ -312,14 +337,14 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     try {
         const djangoResponse = await axios.post(`${BACKEND_URL}/api/report/`, payload);
         setStatusLog(prev => prev + `\n[SERVER] UPLOAD SUCCESSFUL: ID ${djangoResponse.data.id || 'LOGGED'}`);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Backend Upload Error:", error);
         setStatusLog(prev => prev + "\n[SERVER] CONNECTION FAILED. RETRYING...");
         setTimeout(async () => {
              try {
                 await axios.post(`${BACKEND_URL}/api/report/`, payload);
                 setStatusLog(prev => prev + "\n[SERVER] RETRY SUCCESSFUL.");
-             } catch (e) {
+             } catch (e: any) {
                 setStatusLog(prev => prev + "\n[SERVER] RETRY FAILED. LOGGING LOCALLY.");
              }
         }, 3000);
@@ -335,7 +360,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
             timestamp: serverTimestamp() 
         });
         setStatusLog(prev => prev + "\n[CLOUD] FIREBASE SYNC COMPLETE.");
-    } catch (e) {
+    } catch (e: any) {
         setStatusLog(prev => prev + "\n[CLOUD] SYNC ERROR.");
     }
 
@@ -462,9 +487,9 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
             <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 space-y-4">
                <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2"><UserPlus size={14} /> Add Guardian</h3>
                <div className="space-y-3">
-                 <Input placeholder="Full Name" className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 text-xs h-10" value={newContact.name} onChange={(e:any) => setNewContact({...newContact, name: e.target.value})}/>
-                 <Input placeholder="Phone Number" className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 text-xs h-10" value={newContact.phone} onChange={(e:any) => setNewContact({...newContact, phone: e.target.value})}/>
-                 <Input placeholder="Telegram Chat ID (Required for Alerts)" className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 text-xs h-10" value={newContact.telegramId} onChange={(e:any) => setNewContact({...newContact, telegramId: e.target.value})}/>
+                 <Input placeholder="Full Name" className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 text-xs h-10" value={newContact.name} onChange={(e) => setNewContact({...newContact, name: e.target.value})}/>
+                 <Input placeholder="Phone Number" className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 text-xs h-10" value={newContact.phone} onChange={(e) => setNewContact({...newContact, phone: e.target.value})}/>
+                 <Input placeholder="Telegram Chat ID (Required for Alerts)" className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 text-xs h-10" value={newContact.telegramId} onChange={(e) => setNewContact({...newContact, telegramId: e.target.value})}/>
                  <Button onClick={handleAddContact} className="w-full bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-xs h-10 tracking-wider">SAVE CONTACT</Button>
                </div>
             </div>
@@ -494,7 +519,6 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
 
 // --- VISUAL LANDING PAGE ---
 function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
-  // Simple inline landing page to prevent missing component errors
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-900/20 via-black to-black"></div>
