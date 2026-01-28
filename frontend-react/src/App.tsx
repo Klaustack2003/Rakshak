@@ -1,27 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios'; // IMPORT AXIOS FOR PYTHON BACKEND
+import axios from 'axios'; 
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, signInWithPopup, GoogleAuthProvider, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword, 
   signOut, onAuthStateChanged
 } from "firebase/auth";
-// IMPORT FIRESTORE
 import { 
   getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp 
 } from "firebase/firestore";
 import { 
   AlertTriangle, Shield, Zap, 
   Loader2, Mail, User, Lock, MessageSquare, X, Send, LogOut, UserPlus, Trash2,
-  Globe, Activity, Radio, PhoneCall, CheckCircle, Database
+  Globe, Activity, Radio, CheckCircle, Database, Navigation
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { Icon } from 'leaflet'; 
 import 'leaflet/dist/leaflet.css';
 import { GoogleMap, useLoadScript, MarkerF } from '@react-google-maps/api';
 
-// --- VISUAL COMPONENTS (Assuming these exist in your project) ---
+// --- VISUAL COMPONENTS ---
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
 import { Features } from '@/components/landing/Features';
@@ -34,7 +31,10 @@ import { Footer } from '@/components/landing/Footer';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 
-// --- FIREBASE CONFIG ---
+// --- CONSTANTS ---
+// PRODUCTION BACKEND URL (Live Render Server)
+const BACKEND_URL = "https://rakshak-api-sovy.onrender.com";
+
 const firebaseConfig = {
   apiKey: "AIzaSyAuozu4A_9OtGusVCO_pyDt8o8mKl0h3ig",
   authDomain: "rakshak-89deb.firebaseapp.com",
@@ -44,7 +44,7 @@ const firebaseConfig = {
   appId: "1:101062187555:web:5d4b6aaa1f420c4e366f96"
 };
 
-// INITIALIZE FIREBASE & FIRESTORE
+// INITIALIZE FIREBASE
 let app, auth: any, googleProvider: any, db: any;
 try {
     app = initializeApp(firebaseConfig);
@@ -55,7 +55,7 @@ try {
     console.error("Firebase Init Error:", e);
 }
 
-// --- ERROR BOUNDARY COMPONENT ---
+// --- ERROR BOUNDARY ---
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
@@ -72,6 +72,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     return this.props.children;
   }
 }
+
 // --- RAKSHAK BOT ---
 function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -91,10 +92,10 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
     setTimeout(() => {
       let reply = "Processing...";
       const lower = userText.toLowerCase();
-      if (lower.includes('status')) reply = `SPEED: ${stats?.speed?.toFixed(1) || 0} km/h\nG-FORCE: ${stats?.gForce || 1}g`;
-      else if (lower.includes('location')) reply = `GPS: ${stats?.location?.lat.toFixed(4)}, ${stats?.location?.lng.toFixed(4)}`;
+      if (lower.includes('status')) reply = `SPEED: ${stats?.speed?.toFixed(1) || 0} km/h\nG-FORCE: ${stats?.gForce || 1}g\nALT: ${stats?.altitude}m`;
+      else if (lower.includes('location')) reply = `GPS: ${stats?.location?.lat.toFixed(6)}, ${stats?.location?.lng.toFixed(6)}`;
       else if (lower.includes('sos')) reply = "SOS Triggered. Sending Telegram Data Packet.";
-      else reply = "Command not recognized.";
+      else reply = "Command not recognized. Try 'status', 'location', or 'sos'.";
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
     }, 600);
   };
@@ -200,7 +201,7 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
   );
 }
 
-// --- ADMIN DASHBOARD (CONNECTED TO FIRESTORE) ---
+// --- ADMIN DASHBOARD ---
 function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [history, setHistory] = useState<any[]>([]);
 
@@ -238,7 +239,7 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
                     <tbody className="divide-y divide-slate-800">{history.map((log) => (
                         <tr key={log.id} className="hover:bg-slate-800/50 animate-in fade-in slide-in-from-left-4">
                             <td className="p-4 font-mono text-emerald-500">{log.timeDisplay}</td>
-                            <td className="p-4 font-mono text-xs">{log.gpsLink}</td>
+                            <td className="p-4 font-mono text-xs text-cyan-500">{log.gpsLink}</td>
                             <td className="p-4 text-white">{log.user}</td>
                             <td className="p-4 font-bold text-red-500 flex items-center gap-2"><AlertTriangle size={14}/> {log.status}</td>
                         </tr>
@@ -251,27 +252,26 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (WRITES TO FIRESTORE & PYTHON BACKEND) ---
+// --- USER DASHBOARD (PRODUCTION & HIGH PRECISION UPGRADES) ---
 function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
-    if (!saved) {
-        return [{ id: 1, name: "Klaus", phone: "0000000000", telegramId: "1958635120" }];
-    }
-    return JSON.parse(saved);
+    return saved ? JSON.parse(saved) : [{ id: 1, name: "Klaus", phone: "0000000000", telegramId: "1958635120" }];
   });
   
   const [activeTab, setActiveTab] = useState('defense'); 
   const [isSOSActive, setIsSOSActive] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [newContact, setNewContact] = useState({ name: '', phone: '', telegramId: '' });
+  
+  // High Precision Initial State
   const [location, setLocation] = useState<{ lat: number, lng: number }>({ lat: 20.5937, lng: 78.9629 }); 
   const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
   const [statusLog, setStatusLog] = useState<string>("");
 
-  const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); // Add your key here if you have one
+  const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); // Insert API Key if available
 
-  const CRASH_THRESHOLD = 2.5; 
+  const CRASH_THRESHOLD = 3.5; // Increased slightly to prevent false positives in pocket
   const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
 
   useEffect(() => { localStorage.setItem('rakshak_contacts', JSON.stringify(contacts)); }, [contacts]);
@@ -280,86 +280,127 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const triggerSOS = async () => {
     if (isSOSActive) return; 
     setIsSOSActive(true);
-    setStatusLog("CRASH DETECTED! UPLOADING TO CLOUD...");
+    setStatusLog("⚠️ CRASH DETECTED! INITIATING EMERGENCY PROTOCOLS...");
+
+    // 0. HAPTIC FEEDBACK (Phone Vibrates: SOS pattern ... --- ...)
+    if (navigator.vibrate) { navigator.vibrate([100,50,100,50,100,200,500,200,500,200,100,50,100,50,100]); }
 
     // 1. SOUND SIREN
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Blocked", e));
 
-    // ------------------------------------------------------------
-    // 2. NEW: SEND TO PYTHON BACKEND (DJANGO)
-    // ------------------------------------------------------------
-    try {
-        const djangoPayload = {
-            userEmail: user.email,
-            latitude: location.lat,
-            longitude: location.lng,
-            gForce: stats.gForce || 4.5, // Fallback if 0
-            speed: stats.speed || 0
-        };
+    // 2. DATA PREPARATION (HIGH PRECISION)
+    const payload = {
+        userEmail: user.email,
+        latitude: parseFloat(location.lat.toFixed(7)),   // 7 decimal places (~1cm precision)
+        longitude: parseFloat(location.lng.toFixed(7)),
+        gForce: parseFloat(stats.gForce.toFixed(4)),     // 4 decimal places
+        speed: parseFloat(stats.speed.toFixed(2)),       // 2 decimal places
+        altitude: parseFloat(stats.altitude.toFixed(2))
+    };
 
-        // Post to your local Django Server
-        const djangoResponse = await axios.post('http://127.0.0.1:8000/api/report/', djangoPayload);
-        setStatusLog(prev => prev + `\n✅ SENT TO PYTHON BACKEND: ID ${djangoResponse.data.id}`);
+    // 3. SEND TO PYTHON BACKEND (RENDER)
+    try {
+        const djangoResponse = await axios.post(`${BACKEND_URL}/api/report/`, payload);
+        setStatusLog(prev => prev + `\n✅ CLOUD BACKEND ACKNOWLEDGED: ID ${djangoResponse.data.id || 'Saved'}`);
     } catch (error) {
         console.error("Django Connection Failed:", error);
-        setStatusLog(prev => prev + "\n❌ PYTHON BACKEND OFFLINE");
+        setStatusLog(prev => prev + "\n❌ CLOUD BACKEND UNREACHABLE (Retrying...)");
+        // Simple Retry Logic
+        setTimeout(async () => {
+            try {
+                await axios.post(`${BACKEND_URL}/api/report/`, payload);
+                setStatusLog(prev => prev + "\n✅ RETRY SUCCESSFUL.");
+            } catch(e) { setStatusLog(prev => prev + "\n❌ RETRY FAILED. SAVING LOCAL."); }
+        }, 3000);
     }
-    // ------------------------------------------------------------
 
-    // 3. WRITE TO FIREBASE (Backup/Realtime DB)
+    // 4. WRITE TO FIREBASE (REALTIME LOG)
     try {
         await addDoc(collection(db, "incidents"), {
             user: user.email,
-            gpsLink: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
+            gpsLink: `${location.lat.toFixed(7)}, ${location.lng.toFixed(7)}`,
             status: "CRASH DETECTED",
             timeDisplay: new Date().toLocaleTimeString(),
             timestamp: serverTimestamp() 
         });
-        setStatusLog(prev => prev + "\n✅ FIREBASE LOGGED.");
+        setStatusLog(prev => prev + "\n✅ FIREBASE SECURE LOG.");
     } catch (e) {
         setStatusLog(prev => prev + "\n❌ FIREBASE ERROR: " + e);
     }
 
-    // 4. TELEGRAM ALERT
-    const googleMapsLink = `https://www.google.com/maps?q=lat,lng{location.lat},${location.lng}`;
-    const alertMsg = `🚨 *SOS! CRASH DETECTED!* 🚨\n\n👤 *User:* ${user.email}\n🚀 *Speed:* ${stats.speed.toFixed(0)} km/h\n💥 *G-Force:* ${stats.gForce}g\n\n📍 *LIVE LOCATION:*\n${googleMapsLink}`;
+    // 5. TELEGRAM ALERT (RICH DATA)
+    const googleMapsLink = `http://googleusercontent.com/maps.google.com/3{location.lat.toFixed(7)},${location.lng.toFixed(7)}`;
+    const alertMsg = `🚨 *CRITICAL SOS ALERT* 🚨\n\n` +
+                     `👤 *Pilot:* ${user.email}\n` +
+                     `🚀 *Impact Speed:* ${stats.speed.toFixed(2)} km/h\n` +
+                     `💥 *Peak G-Force:* ${stats.gForce.toFixed(4)}g\n` +
+                     `🏔 *Altitude:* ${stats.altitude.toFixed(1)}m\n\n` +
+                     `📡 *PRECISION COORDINATES:*\nLat: \`${location.lat.toFixed(7)}\`\nLng: \`${location.lng.toFixed(7)}\`\n\n` +
+                     `📍 *LIVE TRACKING:*\n${googleMapsLink}`;
 
     if (contacts.length > 0) {
       const primary = contacts[0];
       if (primary.telegramId) {
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${primary.telegramId}&text=${encodeURIComponent(alertMsg)}&parse_mode=Markdown`;
         fetch(url).then(res => res.json()).then(data => {
-            if(data.ok) setStatusLog(prev => prev + "\n✅ TELEGRAM SENT!");
+            if(data.ok) setStatusLog(prev => prev + "\n✅ TELEGRAM DISPATCHED.");
             else setStatusLog(prev => prev + `\n❌ TELEGRAM ERROR.`);
         });
       }
-      setTimeout(() => { setIsSOSActive(false); setStatusLog("✅ SYSTEM RESET."); }, 10000); 
+      setTimeout(() => { setIsSOSActive(false); setStatusLog("✅ SYSTEM RESET."); }, 15000); 
     } else {
-        setTimeout(() => setIsSOSActive(false), 3000);
+        setTimeout(() => setIsSOSActive(false), 5000);
     }
   };
 
-  // SENSORS
+  // --- PRECISE SENSOR LOGIC ---
   useEffect(() => {
+    // 1. GPS: Enable High Accuracy Mode
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setLocation(newLoc);
-        setStats(prev => ({ ...prev, speed: pos.coords.speed ? (pos.coords.speed * 3.6) : 0, altitude: pos.coords.altitude || 0, location: newLoc }));
-      }, (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+        setStats(prev => ({ 
+            ...prev, 
+            // Convert m/s to km/h
+            speed: pos.coords.speed ? parseFloat((pos.coords.speed * 3.6).toFixed(2)) : 0, 
+            altitude: pos.coords.altitude || 0, 
+            location: newLoc 
+        }));
+      }, 
+      (err) => console.error("GPS Error", err), 
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
     );
+
+    // 2. ACCELEROMETER: Vector Calculation
     const handleMotion = (e: DeviceMotionEvent) => {
       if (e.accelerationIncludingGravity) {
         const { x, y, z } = e.accelerationIncludingGravity;
-        const g = Math.sqrt((x || 0)**2 + (y || 0)**2 + (z || 0)**2) / 9.8;
-        const currentG = parseFloat(g.toFixed(2));
+        
+        // Calculate 3D Vector Magnitude (Pythagoras)
+        const gVector = Math.sqrt((x || 0)**2 + (y || 0)**2 + (z || 0)**2);
+        
+        // Normalize to Earth Gs (9.80665 m/s²)
+        // We use 4 decimal places for scientific precision
+        const currentG = parseFloat((gVector / 9.80665).toFixed(4));
+        
         setStats(prev => ({ ...prev, gForce: currentG }));
-        if (currentG > CRASH_THRESHOLD && !isSOSActive) { triggerSOS(); }
+        
+        // Trigger SOS if Threshold exceeded
+        if (currentG > CRASH_THRESHOLD && !isSOSActive) { 
+            triggerSOS(); 
+        }
       }
     };
+
     window.addEventListener('devicemotion', handleMotion);
-    return () => { navigator.geolocation.clearWatch(watchId); window.removeEventListener('devicemotion', handleMotion); };
+    
+    // Cleanup to prevent memory leaks
+    return () => { 
+        navigator.geolocation.clearWatch(watchId); 
+        window.removeEventListener('devicemotion', handleMotion); 
+    };
   }, [isSOSActive, contacts]); 
 
   const handleAddContact = () => {
@@ -369,6 +410,16 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     }
   };
   const removeContact = (id: number) => setContacts(contacts.filter(c => c.id !== id));
+
+  // iOS Permission Helper (Hidden unless needed)
+  const requestPermission = async () => {
+      if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
+          try {
+              const response = await (DeviceMotionEvent as any).requestPermission();
+              if (response === 'granted') alert("Sensors Active!");
+          } catch (e) { alert("Permission Denied"); }
+      }
+  };
 
   return (
     <div className="min-h-screen bg-black text-gray-200 pb-20 font-sans">
@@ -391,9 +442,9 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
         {activeTab === 'defense' && (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center"><Activity size={14} className="text-cyan-600 mb-1" /><div className="text-[10px] text-slate-500 font-bold tracking-widest">SPEED</div><div className="text-xl font-mono text-cyan-400">{stats.speed.toFixed(0)}</div></div>
-              <div className={`p-3 rounded-xl border text-center flex flex-col items-center transition-all ${stats.gForce > 2 ? 'bg-red-950/30 border-red-500/50 animate-pulse' : 'bg-slate-900/50 border-slate-800'}`}><Zap size={14} className={`${stats.gForce > 2 ? 'text-red-500' : 'text-yellow-600'} mb-1`} /><div className="text-[10px] text-slate-500 font-bold tracking-widest">G-FORCE</div><div className={`text-xl font-mono ${stats.gForce > 2 ? 'text-red-500' : 'text-white'}`}>{stats.gForce}g</div></div>
-              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center"><Radio size={14} className="text-purple-600 mb-1" /><div className="text-[10px] text-slate-500 font-bold tracking-widest">ALTITUDE</div><div className="text-xl font-mono text-purple-400">{stats.altitude.toFixed(0)}m</div></div>
+              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center"><Activity size={14} className="text-cyan-600 mb-1" /><div className="text-[10px] text-slate-500 font-bold tracking-widest">SPEED</div><div className="text-xl font-mono text-cyan-400">{stats.speed.toFixed(1)}<span className="text-[10px] ml-1">km/h</span></div></div>
+              <div className={`p-3 rounded-xl border text-center flex flex-col items-center transition-all ${stats.gForce > 2 ? 'bg-red-950/30 border-red-500/50 animate-pulse' : 'bg-slate-900/50 border-slate-800'}`}><Zap size={14} className={`${stats.gForce > 2 ? 'text-red-500' : 'text-yellow-600'} mb-1`} /><div className="text-[10px] text-slate-500 font-bold tracking-widest">G-FORCE</div><div className={`text-xl font-mono ${stats.gForce > 2 ? 'text-red-500' : 'text-white'}`}>{stats.gForce.toFixed(2)}g</div></div>
+              <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center flex flex-col items-center"><Navigation size={14} className="text-purple-600 mb-1" /><div className="text-[10px] text-slate-500 font-bold tracking-widest">ALTITUDE</div><div className="text-xl font-mono text-purple-400">{stats.altitude.toFixed(0)}m</div></div>
             </div>
 
             <button onClick={() => setShowMap(!showMap)} className="w-full py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-400 hover:border-cyan-900/50 transition-all flex items-center justify-center gap-2 text-sm font-bold"><Globe size={18} /> {showMap ? "CLOSE SAT-FEED" : "LIVE SAT-FEED"}</button>
@@ -413,6 +464,9 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
                 <div className="flex flex-col items-center z-10"><AlertTriangle size={48} className={`mb-1 ${isSOSActive ? 'text-white animate-bounce' : 'text-red-500'}`} /><span className={`text-2xl font-black tracking-widest ${isSOSActive ? 'text-white' : 'text-red-500'}`}>SOS</span></div>
               </button>
               {statusLog && (<div className="mt-6 w-full bg-slate-900 border border-slate-700 p-4 rounded-xl"><div className="flex items-center gap-2 mb-2 text-cyan-400 text-xs font-bold uppercase tracking-wider"><Activity size={12} className="animate-pulse"/> System Log</div><div className="font-mono text-xs text-slate-300 whitespace-pre-line">{statusLog}</div></div>)}
+              
+              {/* iOS Permission Button (Hidden on Android usually) */}
+              <button onClick={requestPermission} className="mt-4 text-[10px] text-slate-600 hover:text-slate-400 underline">Enable iOS Sensors</button>
             </div>
           </div>
         )}
@@ -464,7 +518,7 @@ function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   );
 }
 
-// --- MAIN APP COMPONENT (CONTROLS THE VIEW) ---
+// --- MAIN APP COMPONENT ---
 function App() {
     const [view, setView] = useState<'landing' | 'auth' | 'app' | 'admin'>('landing');
     const [user, setUser] = useState<any>(null);

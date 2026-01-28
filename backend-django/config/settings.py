@@ -9,8 +9,9 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
-import dj_database_url
+
 import os  # Ensure os is imported
+import dj_database_url
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -88,13 +89,9 @@ DATABASES = {
     }
 }
 # OVERRIDE: If running on Render, use the Cloud Database
-database_url = os.environ.get("DATABASE_URL")
-if database_url:
-    DATABASES['default'] = dj_database_url.parse(
-        database_url, 
-        conn_max_age=600, 
-        conn_health_checks=True,
-    )
+# This automatically detects the database we just created in Step 2
+if 'DATABASE_URL' in os.environ:
+    DATABASES['default'] = dj_database_url.config(conn_max_age=600, ssl_require=True)
 
 
 # Password validation
