@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import axios from 'axios'; // IMPORT AXIOS FOR PYTHON BACKEND
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, signInWithPopup, GoogleAuthProvider, 
@@ -21,7 +21,7 @@ import { Icon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { GoogleMap, useLoadScript, MarkerF } from '@react-google-maps/api';
 
-// --- VISUAL COMPONENTS ---
+// --- VISUAL COMPONENTS (Assuming these exist in your project) ---
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
 import { Features } from '@/components/landing/Features';
@@ -34,7 +34,7 @@ import { Footer } from '@/components/landing/Footer';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 
-// --- FIREBASE CONFIG (YOURS) ---
+// --- FIREBASE CONFIG ---
 const firebaseConfig = {
   apiKey: "AIzaSyAuozu4A_9OtGusVCO_pyDt8o8mKl0h3ig",
   authDomain: "rakshak-89deb.firebaseapp.com",
@@ -49,13 +49,13 @@ let app, auth: any, googleProvider: any, db: any;
 try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
-    db = getFirestore(app); // Init Firestore
+    db = getFirestore(app);
     googleProvider = new GoogleAuthProvider();
 } catch (e) {
     console.error("Firebase Init Error:", e);
 }
 
-// --- ERROR BOUNDARY ---
+// --- ERROR BOUNDARY COMPONENT ---
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
@@ -72,7 +72,6 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     return this.props.children;
   }
 }
-
 // --- RAKSHAK BOT ---
 function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -205,12 +204,8 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
 function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [history, setHistory] = useState<any[]>([]);
 
-  // REAL-TIME FIRESTORE LISTENER
   useEffect(() => {
-    // This connects to the "incidents" collection in your Cloud Firestore
     const q = query(collection(db, "incidents"), orderBy("timestamp", "desc"));
-    
-    // onSnapshot creates a live connection. When DB changes, this runs instantly.
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const incidents = snapshot.docs.map(doc => ({
             id: doc.id,
@@ -218,7 +213,6 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
         }));
         setHistory(incidents);
     });
-
     return () => unsubscribe();
   }, []);
 
@@ -257,7 +251,7 @@ function AdminDashboard({ onLogout, user }: { onLogout: () => void, user: any })
   );
 }
 
-// --- USER DASHBOARD (WRITES TO FIRESTORE) ---
+// --- USER DASHBOARD (WRITES TO FIRESTORE & PYTHON BACKEND) ---
 function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [contacts, setContacts] = useState<{id: number, name: string, phone: string, telegramId?: string}[]>(() => {
     const saved = localStorage.getItem('rakshak_contacts');
@@ -275,7 +269,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
   const [stats, setStats] = useState({ speed: 0, gForce: 1.0, altitude: 0, location: location });
   const [statusLog, setStatusLog] = useState<string>("");
 
-  const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); 
+  const { isLoaded } = useLoadScript({ googleMapsApiKey: "" }); // Add your key here if you have one
 
   const CRASH_THRESHOLD = 2.5; 
   const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
@@ -292,31 +286,42 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Blocked", e));
 
-    // 2. WRITE TO FIREBASE (REAL BACKEND)
+    // ------------------------------------------------------------
+    // 2. NEW: SEND TO PYTHON BACKEND (DJANGO)
+    // ------------------------------------------------------------
+    try {
+        const djangoPayload = {
+            userEmail: user.email,
+            latitude: location.lat,
+            longitude: location.lng,
+            gForce: stats.gForce || 4.5, // Fallback if 0
+            speed: stats.speed || 0
+        };
+
+        // Post to your local Django Server
+        const djangoResponse = await axios.post('http://127.0.0.1:8000/api/report/', djangoPayload);
+        setStatusLog(prev => prev + `\n✅ SENT TO PYTHON BACKEND: ID ${djangoResponse.data.id}`);
+    } catch (error) {
+        console.error("Django Connection Failed:", error);
+        setStatusLog(prev => prev + "\n❌ PYTHON BACKEND OFFLINE");
+    }
+    // ------------------------------------------------------------
+
+    // 3. WRITE TO FIREBASE (Backup/Realtime DB)
     try {
         await addDoc(collection(db, "incidents"), {
             user: user.email,
             gpsLink: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
             status: "CRASH DETECTED",
             timeDisplay: new Date().toLocaleTimeString(),
-            timestamp: serverTimestamp() // Used for sorting
+            timestamp: serverTimestamp() 
         });
-        setStatusLog(prev => prev + "\n✅ CLOUD UPLOAD COMPLETE.");
+        setStatusLog(prev => prev + "\n✅ FIREBASE LOGGED.");
     } catch (e) {
-        setStatusLog(prev => prev + "\n❌ CLOUD ERROR: " + e);
-        // Fallback to LocalStorage if Cloud fails
-        const newLog = {
-            id: Date.now(),
-            user: user.email,
-            gpsLink: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
-            status: "OFFLINE CRASH",
-            timeDisplay: new Date().toLocaleTimeString()
-        };
-        const existing = JSON.parse(localStorage.getItem('rakshak_history') || "[]");
-        localStorage.setItem('rakshak_history', JSON.stringify([newLog, ...existing]));
+        setStatusLog(prev => prev + "\n❌ FIREBASE ERROR: " + e);
     }
 
-    // 3. TELEGRAM ALERT
+    // 4. TELEGRAM ALERT
     const googleMapsLink = `https://www.google.com/maps?q=lat,lng{location.lat},${location.lng}`;
     const alertMsg = `🚨 *SOS! CRASH DETECTED!* 🚨\n\n👤 *User:* ${user.email}\n🚀 *Speed:* ${stats.speed.toFixed(0)} km/h\n💥 *G-Force:* ${stats.gForce}g\n\n📍 *LIVE LOCATION:*\n${googleMapsLink}`;
 
@@ -459,46 +464,32 @@ function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   );
 }
 
-// --- MAIN APP ---
+// --- MAIN APP COMPONENT (CONTROLS THE VIEW) ---
 function App() {
-  const [view, setView] = useState('landing'); 
-  const [user, setUser] = useState<any>(null); 
-  const [isAuthChecking, setIsAuthChecking] = useState(true); 
+    const [view, setView] = useState<'landing' | 'auth' | 'app' | 'admin'>('landing');
+    const [user, setUser] = useState<any>(null);
+    const [userRole, setUserRole] = useState<'user' | 'admin'>('user');
 
-  useEffect(() => {
-    const checkLogin = async () => {
-      const localRole = localStorage.getItem('rakshak_role');
-      if (localRole === 'admin') { setUser({ email: "COMMANDER", uid: "admin-local" }); setView('admin'); setIsAuthChecking(false); return; }
-      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        if (currentUser) { setUser(currentUser); setView('user'); } 
-        else { if (localRole !== 'admin') setView('landing'); }
-        setIsAuthChecking(false);
-      });
-      return () => unsubscribe();
+    const handleAuthSuccess = (role: string, userData: any) => {
+        setUser(userData);
+        setUserRole(role as 'user' | 'admin');
+        setView(role === 'admin' ? 'admin' : 'app');
     };
-    checkLogin();
-  }, []);
 
-  const handleAuthSuccess = (role: string, userData: any) => { if (role === 'admin') localStorage.setItem('rakshak_role', 'admin'); setUser(userData); setView(role); };
-  const handleLogout = async () => { localStorage.removeItem('rakshak_role'); if(auth) await signOut(auth); setUser(null); setView('landing'); };
+    const handleLogout = () => {
+        setUser(null);
+        setView('landing');
+        try { signOut(auth); } catch(e) {}
+    };
 
-  if (isAuthChecking) {
     return (
-        <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4">
-            <Loader2 className="animate-spin text-cyan-500 w-12 h-12" />
-            <div className="text-cyan-500 font-mono text-sm tracking-[0.2em] animate-pulse">ESTABLISHING SECURE UPLINK...</div>
-        </div>
+        <ErrorBoundary>
+            {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
+            {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
+            {view === 'app' && <UserApp onLogout={handleLogout} user={user} />}
+            {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
+        </ErrorBoundary>
     );
-  }
-
-  return (
-    <ErrorBoundary>
-        {view === 'landing' && <LandingPage onLoginClick={() => setView('auth')} />}
-        {view === 'auth' && <AuthPortal onAuthSuccess={handleAuthSuccess} onBack={() => setView('landing')} />}
-        {view === 'admin' && <AdminDashboard onLogout={handleLogout} user={user} />}
-        {view === 'user' && <UserApp onLogout={handleLogout} user={user} />}
-    </ErrorBoundary>
-  );
 }
 
 export default App;
