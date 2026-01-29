@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-28uru0zkjw7oa8bvkphf300y5hb+!)ag%^+%__vn2g$o3b*q45
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['rakshak-api-sovy.onrender.com', 'localhost', '127.0.0.1', '*']
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -129,4 +129,5 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+CSRF_TRUSTED_ORIGINS = ['https://rakshak-api-sovy.onrender.com', 'https://rakshak-sigma.vercel.app']
 CORS_ALLOW_ALL_ORIGINS = True
