@@ -1,8 +1,8 @@
 from django.contrib import admin
-from django.urls import path
-from incidents.views import report_crash
+from django.urls import path, include
 
 urlpatterns = [
-    path('admin/', admin.site.urls),          # The Dashboard
-    path('api/report/', report_crash),        # The React Endpoint
+    path('admin/', admin.site.urls),
+    # This line connects your API URLs. If it's missing, you get 404s.
+    path('api/', include('api.urls')), 
 ]

@@ -33,6 +33,7 @@ import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 
 // --- CONSTANTS ---
+// Using your live Render URL
 const BACKEND_URL = "https://rakshak-api-sovy.onrender.com";
 const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
 
@@ -164,7 +165,7 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
     e.preventDefault(); setIsLoading(true);
     setTimeout(() => {
         if (email === "commander" && adminKey === "rakshak-alpha") { 
-            // FIX: Save admin session to localStorage
+            // FIX: Save admin session to localStorage so refresh works
             localStorage.setItem("rakshak_admin_session", "true");
             onAuthSuccess("admin", { email: "COMMANDER", uid: "ADM-001" }); 
         } 
@@ -294,7 +295,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Auto-play Blocked", e));
 
-    // 2. BACKEND PAYLOAD (Standardized)
+    // 2. BACKEND PAYLOAD
     const djangoPayload = {
         userEmail: user.email,
         latitude: parseFloat(location.lat.toFixed(7)),
@@ -306,7 +307,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     // 3. SEND TO RENDER BACKEND
     try {
         const djangoResponse = await axios.post(`${BACKEND_URL}/api/report/`, djangoPayload);
-        setStatusLog(prev => prev + `\n[SERVER] UPLOAD SUCCESSFUL: ID ${djangoResponse.data.id || 'LOGGED'}`);
+        setStatusLog(prev => prev + `\n[SERVER] DATA UPLOADED: ID ${djangoResponse.data.id || 'OK'}`);
     } catch (error: any) {
         console.error("Backend Error:", error);
         setStatusLog(prev => prev + "\n[SERVER] CONNECTION FAILED. (Check Render Status)");
@@ -326,8 +327,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
         setStatusLog(prev => prev + "\n[CLOUD] ERROR: " + e.message);
     }
 
-    // 5. TELEGRAM ALERT (Fixed Link)
-    // Using official Google Maps URL format
+    // 5. TELEGRAM ALERT (Fixed Google Maps Link)
     const googleMapsLink = `https://www.google.com/maps?q=${location.lat.toFixed(7)},${location.lng.toFixed(7)}`;
     const alertMsg = `[CRITICAL ALERT] CRASH DETECTED\n\n` +
                      `USER: ${user.email}\n` +
@@ -505,18 +505,18 @@ function App() {
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
-    // FIX: Persistent Auth for BOTH User (Firebase) and Admin (LocalStorage)
+    // FIX: Persistent Auth for Admin (LocalStorage) & User (Firebase)
     useEffect(() => {
-        // 1. Check for Admin Session
+        // 1. Check for Admin Session FIRST
         const adminSession = localStorage.getItem("rakshak_admin_session");
         if (adminSession === "true") {
             setUser({ email: "COMMANDER", uid: "ADM-001" });
             setView('admin');
             setLoading(false);
-            return;
+            return; // EXIT early so Firebase doesn't override
         }
 
-        // 2. Check for User Session (Firebase)
+        // 2. Check for User Session
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
             if (currentUser) {
                 setUser(currentUser);
@@ -536,8 +536,7 @@ function App() {
     };
 
     const handleLogout = () => {
-        // Clear BOTH sessions
-        localStorage.removeItem("rakshak_admin_session");
+        localStorage.removeItem("rakshak_admin_session"); // Clear Admin Session
         signOut(auth).then(() => {
             setUser(null);
             setView('landing');
