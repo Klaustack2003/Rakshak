@@ -1,18 +1,25 @@
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 from .models import Incident
+import json
 
-@api_view(['POST'])
-def report_crash(request):
-    data = request.data
+@csrf_exempt
+def report_incident(request):  # <--- NAME MUST MATCH urls.py
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            
+            # Save data to the database
+            incident = Incident.objects.create(
+                user_email=data.get('userEmail'),
+                latitude=data.get('latitude'),
+                longitude=data.get('longitude'),
+                g_force=data.get('gForce'),
+                speed=data.get('speed')
+            )
+            
+            return JsonResponse({'status': 'success', 'id': incident.id}, status=201)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     
-    # Create the record in Postgres
-    incident = Incident.objects.create(
-        user_email=data.get('userEmail'),
-        latitude=data.get('latitude'),
-        longitude=data.get('longitude'),
-        g_force=data.get('gForce'),
-        speed=data.get('speed')
-    )
-    
-    return Response({"status": "Success", "id": incident.id})
+    return JsonResponse({'status': 'error', 'message': 'Only POST allowed'}, status=405)
