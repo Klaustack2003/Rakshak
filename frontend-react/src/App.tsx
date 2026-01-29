@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import 'leaflet/dist/leaflet.css';
 import { GoogleMap, useLoadScript, MarkerF } from '@react-google-maps/api';
 
-// --- YOUR ORIGINAL DESIGN COMPONENTS ---
+// --- YOUR DESIGN COMPONENTS (Preserved) ---
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
 import { Features } from '@/components/landing/Features';
@@ -33,7 +33,6 @@ import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 
 // --- CONSTANTS ---
-// Using your live Render URL
 const BACKEND_URL = "https://rakshak-api-sovy.onrender.com";
 const TELEGRAM_BOT_TOKEN = "8233755831:AAF_r2lFh1QdzUkshyybkHkQigcC0-Urh-k"; 
 
@@ -46,7 +45,6 @@ const firebaseConfig = {
   appId: "1:101062187555:web:5d4b6aaa1f420c4e366f96"
 };
 
-// INITIALIZE FIREBASE
 let app, auth: any, googleProvider: any, db: any;
 try {
     app = initializeApp(firebaseConfig);
@@ -66,11 +64,8 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
       return (
         <div className="min-h-screen bg-black text-red-500 flex flex-col items-center justify-center p-10 font-mono text-center">
           <AlertTriangle size={48} className="mb-4" />
-          <h1 className="text-xl font-bold tracking-widest uppercase">System Critical Error</h1>
-          <p className="mt-2 text-sm text-gray-400">The application encountered a fatal exception.</p>
-          <Button onClick={() => window.location.reload()} className="mt-6 bg-red-600 hover:bg-red-700">
-            REBOOT SYSTEM
-          </Button>
+          <h1 className="text-xl font-bold uppercase">System Critical Error</h1>
+          <Button onClick={() => window.location.reload()} className="mt-6 bg-red-600 hover:bg-red-700 text-white">REBOOT SYSTEM</Button>
         </div>
       );
     }
@@ -97,7 +92,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
     setTimeout(() => {
       let reply = "Processing...";
       const lower = userText.toLowerCase();
-      if (lower.includes('status')) reply = `SPEED: ${stats?.speed?.toFixed(1) || 0} km/h | G-FORCE: ${stats?.gForce || 0}g | ALT: ${stats?.altitude || 0}m`;
+      if (lower.includes('status')) reply = `SPEED: ${stats?.speed?.toFixed(1) || 0} km/h | G-FORCE: ${stats?.gForce || 0}g`;
       else if (lower.includes('location')) reply = `LAT: ${stats?.location?.lat.toFixed(6)} | LNG: ${stats?.location?.lng.toFixed(6)}`;
       else if (lower.includes('sos')) reply = "Manual SOS Protocol Initiated.";
       else reply = "Command not recognized.";
@@ -115,7 +110,7 @@ function RakshakBot({ stats, user }: { stats?: any, user?: any }) {
       {isOpen && (
         <div className="w-[320px] h-[400px] bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex justify-between items-center">
-            <span className="font-bold text-white text-xs tracking-widest flex items-center gap-2"><Shield size={12}/> RAKSHAK AI</span>
+            <span className="font-bold text-white text-sm">RAKSHAK AI</span>
             <button onClick={() => setIsOpen(false)}><X size={16} className="text-slate-400 hover:text-white" /></button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
@@ -165,7 +160,7 @@ function AuthPortal({ onAuthSuccess, onBack }: { onAuthSuccess: (role: string, d
     e.preventDefault(); setIsLoading(true);
     setTimeout(() => {
         if (email === "commander" && adminKey === "rakshak-alpha") { 
-            // FIX: Save admin session to localStorage so refresh works
+            // FIX: Save Admin session so refresh works
             localStorage.setItem("rakshak_admin_session", "true");
             onAuthSuccess("admin", { email: "COMMANDER", uid: "ADM-001" }); 
         } 
@@ -295,7 +290,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     const audio = new Audio("https://cdn.pixabay.com/audio/2024/09/19/09/52/police-siren-26154.mp3"); 
     audio.play().catch(e => console.log("Audio Auto-play Blocked", e));
 
-    // 2. BACKEND PAYLOAD
+    // 2. BACKEND PAYLOAD (Standardized)
     const djangoPayload = {
         userEmail: user.email,
         latitude: parseFloat(location.lat.toFixed(7)),
@@ -311,6 +306,14 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     } catch (error: any) {
         console.error("Backend Error:", error);
         setStatusLog(prev => prev + "\n[SERVER] CONNECTION FAILED. (Check Render Status)");
+        setTimeout(async () => {
+            try {
+                await axios.post(`${BACKEND_URL}/api/report/`, djangoPayload);
+                setStatusLog(prev => prev + "\n[SERVER] RETRY SUCCESSFUL.");
+            } catch(e) {
+                setStatusLog(prev => prev + "\n[SERVER] RETRY FAILED. LOGGING LOCAL.");
+            }
+        }, 3000);
     }
 
     // 4. FIREBASE LOG
@@ -328,7 +331,7 @@ function UserApp({ onLogout, user }: { onLogout: () => void, user: any }) {
     }
 
     // 5. TELEGRAM ALERT (Fixed Google Maps Link)
-    const googleMapsLink = `https://www.google.com/maps?q=${location.lat.toFixed(7)},${location.lng.toFixed(7)}`;
+    const googleMapsLink = `https://www.google.com/maps/search/?api=1&query=${location.lat.toFixed(7)},${location.lng.toFixed(7)}`;
     const alertMsg = `[CRITICAL ALERT] CRASH DETECTED\n\n` +
                      `USER: ${user.email}\n` +
                      `SPEED: ${stats.speed.toFixed(2)} km/h\n` +
